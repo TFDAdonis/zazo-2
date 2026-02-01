@@ -1,5 +1,6 @@
 import streamlit as st
 import json
+import tempfile
 import os
 import pandas as pd
 import folium
@@ -11,9 +12,8 @@ from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
 import ee
 import traceback
-import requests
-from urllib.parse import urlencode
-import base64
+import google_auth_oauthlib.flow
+from googleapiclient.discovery import build
 
 # Page configuration - MUST be first Streamlit command
 st.set_page_config(
@@ -34,27 +34,36 @@ def load_google_config():
             with open("client_secret.json", "r") as f:
                 client_config = json.load(f)["web"]
         else:
-            # Demo credentials (replace with your own)
-            client_config = {
-                "client_id": st.secrets.get("GOOGLE_CLIENT_ID", "your-client-id.apps.googleusercontent.com"),
-                "client_secret": st.secrets.get("GOOGLE_CLIENT_SECRET", "your-client-secret"),
-                "redirect_uris": [st.secrets.get("GOOGLE_REDIRECT_URI", "http://localhost:8501")],
-                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                "token_uri": "https://oauth2.googleapis.com/token"
-            }
+            return None
         return client_config
     except Exception:
+        if os.path.exists("client_secret.json"):
+            with open("client_secret.json", "r") as f:
+                return json.load(f)["web"]
         return None
 
-GOOGLE_SCOPES = "openid email profile"
+GOOGLE_SCOPES = [
+    'https://www.googleapis.com/auth/userinfo.email', 
+    'https://www.googleapis.com/auth/userinfo.profile', 
+    'openid'
+]
+
+def create_google_flow(client_config):
+    if "redirect_uris" in client_config and isinstance(client_config["redirect_uris"], str):
+        client_config["redirect_uris"] = [client_config["redirect_uris"]]
+    
+    flow = google_auth_oauthlib.flow.Flow.from_client_config(
+        {"web": client_config},
+        scopes=GOOGLE_SCOPES,
+        redirect_uri=client_config["redirect_uris"][0]
+    )
+    return flow
 
 # Initialize session state for Google auth
+if "google_credentials" not in st.session_state:
+    st.session_state.google_credentials = None
 if "google_user_info" not in st.session_state:
     st.session_state.google_user_info = None
-if "google_auth_code" not in st.session_state:
-    st.session_state.google_auth_code = None
-if "google_access_token" not in st.session_state:
-    st.session_state.google_access_token = None
 
 # ==================== CUSTOM CSS ====================
 
@@ -185,41 +194,6 @@ st.markdown("""
         box-shadow: 0 5px 15px rgba(0, 255, 136, 0.3);
     }
     
-    /* Login Card Specific */
-    .login-card {
-        max-width: 400px;
-        margin: 100px auto;
-        text-align: center;
-    }
-    
-    .login-button {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 10px;
-        background: white;
-        color: #757575;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        padding: 12px 24px;
-        font-size: 14px;
-        font-weight: 500;
-        cursor: pointer;
-        transition: all 0.3s ease;
-        text-decoration: none;
-        margin: 20px 0;
-    }
-    
-    .login-button:hover {
-        background: #f8f8f8;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-    
-    .login-button img {
-        width: 18px;
-        height: 18px;
-    }
-    
     /* Input fields */
     .stTextInput > div > div > input,
     .stSelectbox > div > div > select,
@@ -292,20 +266,6 @@ st.markdown("""
         border-radius: 50%;
     }
     
-    /* Compact Login Form */
-    .compact-login {
-        background: var(--card-black);
-        border: 1px solid var(--border-gray);
-        border-radius: 10px;
-        padding: 20px;
-        margin-bottom: 20px;
-    }
-    
-    .compact-login h4 {
-        color: var(--primary-green);
-        margin-bottom: 15px;
-    }
-    
     /* Hide Streamlit default elements */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
@@ -313,103 +273,11 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ==================== GOOGLE AUTH FUNCTIONS ====================
-
-def get_google_auth_url():
-    """Generate Google OAuth URL for embedded login"""
-    client_config = load_google_config()
-    if not client_config:
-        return None
-    
-    params = {
-        "client_id": client_config["client_id"],
-        "redirect_uri": client_config["redirect_uris"][0],
-        "response_type": "code",
-        "scope": GOOGLE_SCOPES,
-        "access_type": "offline",
-        "prompt": "consent",
-        "state": "streamlit_gis_app"  # Add state for security
-    }
-    
-    auth_url = f"https://accounts.google.com/o/oauth2/auth?{urlencode(params)}"
-    return auth_url
-
-def exchange_code_for_token(code):
-    """Exchange authorization code for access token"""
-    client_config = load_google_config()
-    if not client_config:
-        return None
-    
-    token_url = "https://oauth2.googleapis.com/token"
-    
-    data = {
-        "code": code,
-        "client_id": client_config["client_id"],
-        "client_secret": client_config["client_secret"],
-        "redirect_uri": client_config["redirect_uris"][0],
-        "grant_type": "authorization_code"
-    }
-    
-    try:
-        response = requests.post(token_url, data=data)
-        if response.status_code == 200:
-            token_data = response.json()
-            st.session_state.google_access_token = token_data.get("access_token")
-            return token_data.get("access_token")
-    except Exception as e:
-        st.error(f"Token exchange failed: {e}")
-    
-    return None
-
-def get_user_info(access_token):
-    """Get user info using access token"""
-    if not access_token:
-        return None
-    
-    user_info_url = "https://www.googleapis.com/oauth2/v2/userinfo"
-    headers = {"Authorization": f"Bearer {access_token}"}
-    
-    try:
-        response = requests.get(user_info_url, headers=headers)
-        if response.status_code == 200:
-            return response.json()
-    except Exception as e:
-        st.error(f"Failed to get user info: {e}")
-    
-    return None
-
-def handle_google_auth_callback():
-    """Handle Google OAuth callback"""
-    query_params = st.query_params
-    
-    if "code" in query_params:
-        code = query_params["code"]
-        st.session_state.google_auth_code = code
-        
-        # Exchange code for token
-        access_token = exchange_code_for_token(code)
-        if access_token:
-            # Get user info
-            user_info = get_user_info(access_token)
-            if user_info:
-                st.session_state.google_user_info = user_info
-                st.session_state.google_access_token = access_token
-                # Clear the code from URL
-                st.query_params.clear()
-                st.rerun()
-        else:
-            st.error("Failed to authenticate with Google")
-
-# Handle OAuth callback
-handle_google_auth_callback()
-
 # ==================== EARTH ENGINE INITIALIZATION ====================
 
 def auto_initialize_earth_engine():
     """Automatically initialize Earth Engine with service account credentials"""
     try:
-        # You can use your existing service account credentials here
-        # For security, consider using st.secrets or environment variables
         service_account_info = {
             "type": "service_account",
             "project_id": "citric-hawk-457513-i6",
@@ -484,76 +352,67 @@ if 'selected_coordinates' not in st.session_state:
 if 'selected_area_name' not in st.session_state:
     st.session_state.selected_area_name = None
 
-# ==================== LOGIN PAGE ====================
+# ==================== GOOGLE AUTHENTICATION CHECK ====================
 
-if not st.session_state.google_user_info:
-    # Show compact login form
+google_config = load_google_config()
+
+# Handle OAuth callback
+code = st.query_params.get("code")
+if code and not st.session_state.google_credentials and google_config:
+    with st.spinner("Authenticating with Google..."):
+        try:
+            flow = create_google_flow(google_config)
+            flow.fetch_token(code=code)
+            credentials = flow.credentials
+            st.session_state.google_credentials = credentials
+            
+            # Get user info
+            service = build('oauth2', 'v2', credentials=credentials)
+            user_info = service.userinfo().get().execute()
+            st.session_state.google_user_info = user_info
+            
+            st.query_params.clear()
+            st.rerun()
+        except Exception as e:
+            st.error(f"Authentication failed: {e}")
+            st.query_params.clear()
+
+# Show login page if not authenticated
+if not st.session_state.google_credentials:
     st.markdown("""
     <div class="main-container">
-        <div class="content-container" style="max-width: 500px; margin: 50px auto;">
-            <div class="card login-card">
+        <div class="content-container" style="max-width: 500px; margin: 100px auto;">
+            <div class="card">
                 <h1 style="text-align: center; margin-bottom: 10px;">🌍 KHISBA GIS</h1>
                 <p style="text-align: center; color: #999999; margin-bottom: 30px;">3D Global Vegetation Analytics</p>
                 
-                <div style="text-align: center; padding: 10px;">
-                    <p style="color: #00ff88; font-weight: 600; margin-bottom: 20px;">Sign in to access the platform</p>
+                <div style="text-align: center; padding: 20px;">
+                    <p style="color: #00ff88; font-weight: 600; margin-bottom: 20px;">Sign in with Google to access the platform</p>
                 </div>
             </div>
         </div>
     </div>
     """, unsafe_allow_html=True)
     
-    # Create columns for centering
     col1, col2, col3 = st.columns([1, 2, 1])
-    
     with col2:
-        st.markdown('<div class="compact-login">', unsafe_allow_html=True)
-        st.markdown('<h4 style="text-align: center;">Google Authentication</h4>', unsafe_allow_html=True)
-        
-        # Get Google auth URL
-        auth_url = get_google_auth_url()
-        
-        if auth_url:
-            # Create HTML button that opens in current window
-            google_button_html = f"""
-            <div style="text-align: center;">
-                <a href="{auth_url}" target="_self" style="text-decoration: none;">
-                    <div class="login-button">
-                        <img src="https://www.google.com/favicon.ico" alt="Google">
-                        Sign in with Google
-                    </div>
-                </a>
-                <p style="color: #666666; font-size: 12px; margin-top: 10px;">
-                    You'll be redirected to Google for authentication
-                </p>
-            </div>
-            """
-            st.markdown(google_button_html, unsafe_allow_html=True)
+        if google_config:
+            try:
+                flow = create_google_flow(google_config)
+                auth_url, _ = flow.authorization_url(prompt='consent')
+                st.link_button("🔓 Login with Google", auth_url, type="primary", use_container_width=True)
+                
+                st.markdown(f"""
+                <div class="card" style="margin-top: 20px;">
+                    <p style="text-align: center; color: #666666; font-size: 12px;">
+                        Configured redirect: <code>{google_config['redirect_uris'][0]}</code>
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
+            except Exception as e:
+                st.error(f"Error creating auth flow: {e}")
         else:
-            st.error("Google OAuth configuration not found. Please check your secrets.")
-            
-            # Alternative: Simple username/password demo
-            st.markdown('<div style="margin-top: 20px;">', unsafe_allow_html=True)
-            st.markdown('<h4 style="color: #00ff88; margin-bottom: 15px;">Demo Login</h4>', unsafe_allow_html=True)
-            
-            demo_username = st.text_input("Username", placeholder="Enter demo username")
-            demo_password = st.text_input("Password", type="password", placeholder="Enter demo password")
-            
-            if st.button("Demo Login", type="primary", use_container_width=True):
-                if demo_username and demo_password:
-                    # Simple demo authentication
-                    st.session_state.google_user_info = {
-                        "name": "Demo User",
-                        "email": "demo@example.com",
-                        "picture": "https://api.dicebear.com/7.x/avataaars/svg?seed=khisba"
-                    }
-                    st.rerun()
-                else:
-                    st.warning("Please enter username and password")
-            
-            st.markdown('</div>', unsafe_allow_html=True)
-        
-        st.markdown('</div>', unsafe_allow_html=True)
+            st.error("Google OAuth configuration not found")
     
     st.stop()
 
@@ -571,7 +430,7 @@ st.markdown(f"""
     </div>
     <div style="display: flex; gap: 10px; align-items: center;">
         <div class="user-badge">
-            <img src="{user_info.get('picture', 'https://api.dicebear.com/7.x/avataaars/svg?seed=khisba')}" alt="Profile">
+            <img src="{user_info.get('picture', '')}" alt="Profile">
             <span>{user_info.get('name', 'User')}</span>
         </div>
         <span class="status-badge">Connected</span>
@@ -586,35 +445,18 @@ with st.sidebar:
     st.markdown(f"""
     <div class="card">
         <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
-            <img src="{user_info.get('picture', 'https://api.dicebear.com/7.x/avataaars/svg?seed=khisba')}" style="width: 40px; height: 40px; border-radius: 50%;">
+            <img src="{user_info.get('picture', '')}" style="width: 40px; height: 40px; border-radius: 50%;">
             <div>
                 <p style="margin: 0; font-weight: 600; color: #fff;">{user_info.get('name', 'User')}</p>
                 <p style="margin: 0; font-size: 12px; color: #999;">{user_info.get('email', '')}</p>
             </div>
         </div>
-        <div style="text-align: center;">
-            <button onclick="logout()" style="background: #ff4444; color: white; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; width: 100%; font-weight: 600;">
-                🚪 Logout
-            </button>
-        </div>
     </div>
     """, unsafe_allow_html=True)
     
-    # JavaScript for logout
-    st.markdown("""
-    <script>
-    function logout() {
-        // Clear session state via query params
-        window.location.search = "?logout=true";
-    }
-    </script>
-    """, unsafe_allow_html=True)
-    
-    # Handle logout
-    if st.query_params.get("logout") == "true":
+    if st.button("🚪 Logout", type="secondary", use_container_width=True):
+        st.session_state.google_credentials = None
         st.session_state.google_user_info = None
-        st.session_state.google_access_token = None
-        st.session_state.google_auth_code = None
         st.query_params.clear()
         st.rerun()
 
