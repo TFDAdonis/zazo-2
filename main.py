@@ -12,8 +12,8 @@ from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
 import ee
 import traceback
-import hashlib
-import time
+import google_auth_oauthlib.flow
+from googleapiclient.discovery import build
 
 # Page configuration - MUST be first Streamlit command
 st.set_page_config(
@@ -23,7 +23,50 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
+# ==================== GOOGLE OAUTH CONFIGURATION ====================
+
+# Load Google OAuth secrets
+def load_google_config():
+    try:
+        if "web" in st.secrets:
+            client_config = dict(st.secrets["web"])
+        elif os.path.exists("client_secret.json"):
+            with open("client_secret.json", "r") as f:
+                client_config = json.load(f)["web"]
+        else:
+            return None
+        return client_config
+    except Exception:
+        if os.path.exists("client_secret.json"):
+            with open("client_secret.json", "r") as f:
+                return json.load(f)["web"]
+        return None
+
+GOOGLE_SCOPES = [
+    'https://www.googleapis.com/auth/userinfo.email', 
+    'https://www.googleapis.com/auth/userinfo.profile', 
+    'openid'
+]
+
+def create_google_flow(client_config):
+    if "redirect_uris" in client_config and isinstance(client_config["redirect_uris"], str):
+        client_config["redirect_uris"] = [client_config["redirect_uris"]]
+    
+    flow = google_auth_oauthlib.flow.Flow.from_client_config(
+        {"web": client_config},
+        scopes=GOOGLE_SCOPES,
+        redirect_uri=client_config["redirect_uris"][0]
+    )
+    return flow
+
+# Initialize session state for Google auth
+if "google_credentials" not in st.session_state:
+    st.session_state.google_credentials = None
+if "google_user_info" not in st.session_state:
+    st.session_state.google_user_info = None
+
 # ==================== CUSTOM CSS ====================
+
 st.markdown("""
 <style>
     /* Base styling */
@@ -68,272 +111,35 @@ st.markdown("""
         margin-bottom: 0.5rem !important;
     }
     
-    /* Login container */
-    .login-wrapper {
-        height: 100vh;
+    h2 {
+        font-size: 1.5rem !important;
+        color: var(--primary-green) !important;
+    }
+    
+    h3 {
+        font-size: 1.25rem !important;
+        margin-bottom: 1rem !important;
+    }
+    
+    /* Layout Container */
+    .main-container {
         display: flex;
-        align-items: center;
-        justify-content: center;
-        background: #000;
-        padding: 20px;
+        gap: 20px;
+        max-width: 1800px;
+        margin: 0 auto;
     }
     
-    .login-container {
-        width: 100%;
-        max-width: 420px;
-        background: var(--card-black);
-        border: 1px solid var(--border-gray);
-        border-radius: 15px;
-        padding: 40px;
-        box-shadow: 0 10px 40px rgba(0, 255, 136, 0.1);
+    .sidebar-container {
+        width: 320px;
+        flex-shrink: 0;
     }
     
-    .login-header {
-        text-align: center;
-        margin-bottom: 40px;
-    }
-    
-    .login-icon {
-        font-size: 3rem;
-        color: var(--primary-green);
-        margin-bottom: 15px;
-    }
-    
-    .login-form {
-        margin-top: 30px;
-    }
-    
-    .form-group {
-        margin-bottom: 20px;
-    }
-    
-    .form-label {
-        display: block;
-        margin-bottom: 8px;
-        color: var(--text-light-gray);
-        font-size: 14px;
-        font-weight: 500;
-    }
-    
-    .form-input {
-        width: 100%;
-        padding: 14px 16px;
-        background: var(--secondary-black);
-        border: 1px solid var(--border-gray);
-        border-radius: 8px;
-        color: var(--text-white);
-        font-size: 15px;
-        transition: all 0.3s ease;
-    }
-    
-    .form-input:focus {
-        outline: none;
-        border-color: var(--primary-green);
-        box-shadow: 0 0 0 3px rgba(0, 255, 136, 0.1);
-    }
-    
-    .login-btn {
-        width: 100%;
-        padding: 15px;
-        background: linear-gradient(90deg, var(--primary-green), var(--accent-green));
-        color: var(--primary-black);
-        border: none;
-        border-radius: 8px;
-        font-size: 16px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.3s ease;
-        margin-top: 10px;
-    }
-    
-    .login-btn:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 5px 20px rgba(0, 255, 136, 0.3);
-    }
-    
-    .login-btn:disabled {
-        background: #333;
-        color: #666;
-        cursor: not-allowed;
-        transform: none;
-        box-shadow: none;
-    }
-    
-    .divider {
-        display: flex;
-        align-items: center;
-        margin: 30px 0;
-        color: var(--text-gray);
-        font-size: 14px;
-    }
-    
-    .divider::before,
-    .divider::after {
-        content: '';
+    .content-container {
         flex: 1;
-        height: 1px;
-        background: var(--border-gray);
+        min-width: 0;
     }
     
-    .divider span {
-        padding: 0 15px;
-    }
-    
-    .google-btn {
-        width: 100%;
-        padding: 14px;
-        background: #4285F4;
-        color: white;
-        border: none;
-        border-radius: 8px;
-        font-size: 15px;
-        font-weight: 500;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 10px;
-        transition: all 0.3s ease;
-    }
-    
-    .google-btn:hover {
-        background: #3367D6;
-        transform: translateY(-2px);
-    }
-    
-    .signup-link {
-        text-align: center;
-        margin-top: 25px;
-        color: var(--text-gray);
-        font-size: 14px;
-    }
-    
-    .signup-link a {
-        color: var(--primary-green);
-        text-decoration: none;
-        font-weight: 500;
-    }
-    
-    .signup-link a:hover {
-        text-decoration: underline;
-    }
-    
-    .error-message {
-        background: rgba(255, 68, 68, 0.1);
-        border: 1px solid rgba(255, 68, 68, 0.3);
-        color: #ff4444;
-        padding: 12px 16px;
-        border-radius: 8px;
-        margin-bottom: 20px;
-        font-size: 14px;
-        display: none;
-    }
-    
-    .success-message {
-        background: rgba(0, 255, 136, 0.1);
-        border: 1px solid rgba(0, 255, 136, 0.3);
-        color: var(--primary-green);
-        padding: 12px 16px;
-        border-radius: 8px;
-        margin-bottom: 20px;
-        font-size: 14px;
-        display: none;
-    }
-    
-    /* Demo credentials */
-    .demo-credentials {
-        background: rgba(0, 255, 136, 0.05);
-        border: 1px solid rgba(0, 255, 136, 0.2);
-        border-radius: 8px;
-        padding: 15px;
-        margin-bottom: 20px;
-        font-size: 13px;
-    }
-    
-    .demo-credentials h4 {
-        color: var(--primary-green);
-        margin: 0 0 8px 0;
-        font-size: 14px;
-    }
-    
-    .demo-credentials p {
-        margin: 5px 0;
-        color: var(--text-light-gray);
-    }
-    
-    .demo-credentials code {
-        background: rgba(0, 0, 0, 0.3);
-        padding: 2px 6px;
-        border-radius: 4px;
-        font-family: monospace;
-        color: var(--primary-green);
-    }
-    
-    /* User info in top right */
-    .user-badge {
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        z-index: 1000;
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        background: rgba(0, 0, 0, 0.8);
-        padding: 8px 15px 8px 8px;
-        border-radius: 25px;
-        border: 1px solid var(--border-gray);
-        backdrop-filter: blur(10px);
-    }
-    
-    .user-avatar {
-        width: 36px;
-        height: 36px;
-        border-radius: 50%;
-        background: linear-gradient(135deg, var(--primary-green), var(--accent-green));
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: black;
-        font-weight: bold;
-        font-size: 14px;
-    }
-    
-    .user-info {
-        font-size: 12px;
-    }
-    
-    .user-name {
-        font-weight: 600;
-        color: white;
-    }
-    
-    .user-email {
-        color: var(--text-gray);
-        font-size: 10px;
-    }
-    
-    .logout-btn {
-        background: transparent;
-        border: none;
-        color: var(--text-gray);
-        cursor: pointer;
-        padding: 4px 8px;
-        border-radius: 4px;
-        font-size: 12px;
-        transition: all 0.3s ease;
-    }
-    
-    .logout-btn:hover {
-        color: var(--primary-green);
-        background: rgba(0, 255, 136, 0.1);
-    }
-    
-    /* Hide Streamlit default elements */
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
-    
-    /* Cards for main app */
+    /* Cards */
     .card {
         background: var(--card-black);
         border: 1px solid var(--border-gray);
@@ -356,6 +162,77 @@ st.markdown("""
         border-bottom: 1px solid var(--border-gray);
     }
     
+    .card-title .icon {
+        width: 32px;
+        height: 32px;
+        background: rgba(0, 255, 136, 0.1);
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--primary-green);
+        font-size: 16px;
+    }
+    
+    /* Buttons */
+    .stButton > button {
+        width: 100%;
+        background: linear-gradient(90deg, var(--primary-green), var(--accent-green));
+        color: var(--primary-black) !important;
+        border: none;
+        padding: 12px 20px;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 14px;
+        letter-spacing: 0.5px;
+        transition: all 0.3s ease;
+        margin: 5px 0;
+    }
+    
+    .stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(0, 255, 136, 0.3);
+    }
+    
+    /* Input fields */
+    .stTextInput > div > div > input,
+    .stSelectbox > div > div > select,
+    .stDateInput > div > div > input,
+    .stNumberInput > div > div > input,
+    .stTextArea > div > div > textarea {
+        background: var(--secondary-black) !important;
+        border: 1px solid var(--border-gray) !important;
+        color: var(--text-white) !important;
+        border-radius: 6px !important;
+        padding: 10px 12px !important;
+        font-size: 14px !important;
+    }
+    
+    .stTextInput > div > div > input:focus,
+    .stSelectbox > div > div > select:focus,
+    .stDateInput > div > div > input:focus {
+        border-color: var(--primary-green) !important;
+        box-shadow: 0 0 0 2px rgba(0, 255, 136, 0.2) !important;
+    }
+    
+    /* Map container */
+    .map-container {
+        border: 1px solid var(--border-gray);
+        border-radius: 10px;
+        overflow: hidden;
+        height: 600px;
+    }
+    
+    /* 3D Globe container */
+    .globe-container {
+        border: 1px solid var(--border-gray);
+        border-radius: 10px;
+        overflow: hidden;
+        height: 600px;
+        background: #000;
+        position: relative;
+    }
+    
     /* Status badges */
     .status-badge {
         display: inline-flex;
@@ -369,123 +246,32 @@ st.markdown("""
         font-weight: 600;
         letter-spacing: 0.5px;
     }
+    
+    /* User info badge */
+    .user-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 12px;
+        background: rgba(0, 255, 136, 0.1);
+        border: 1px solid rgba(0, 255, 136, 0.3);
+        border-radius: 20px;
+        font-size: 12px;
+        color: var(--primary-green);
+    }
+    
+    .user-badge img {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+    }
+    
+    /* Hide Streamlit default elements */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
 </style>
 """, unsafe_allow_html=True)
-
-# ==================== SIMPLE AUTH SYSTEM ====================
-
-# Simple user database (in production, use a real database)
-USERS = {
-    "admin@khisba.com": {
-        "name": "Admin User",
-        "password": "8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918",  # "admin" hashed
-        "role": "admin"
-    },
-    "user@khisba.com": {
-        "name": "Demo User",
-        "password": "04f8996da763b7a969b1028ee3007569eaf3a635486ddab211d512c85b9df8fb",  # "password" hashed
-        "role": "user"
-    },
-    "taibi@khisba.com": {
-        "name": "Taibi Farouk",
-        "password": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",  # empty string hashed
-        "role": "admin"
-    }
-}
-
-def hash_password(password):
-    """Simple password hashing"""
-    return hashlib.sha256(password.encode()).hexdigest()
-
-def authenticate_user(email, password):
-    """Authenticate user with email and password"""
-    if email in USERS:
-        hashed_password = hash_password(password)
-        if USERS[email]["password"] == hashed_password:
-            return {
-                "email": email,
-                "name": USERS[email]["name"],
-                "role": USERS[email]["role"]
-            }
-    return None
-
-# Initialize session state
-if "authenticated" not in st.session_state:
-    st.session_state.authenticated = False
-if "user_info" not in st.session_state:
-    st.session_state.user_info = None
-if "show_signup" not in st.session_state:
-    st.session_state.show_signup = False
-
-# ==================== LOGIN PAGE ====================
-
-if not st.session_state.authenticated:
-    st.markdown('<div class="login-wrapper">', unsafe_allow_html=True)
-    
-    login_tab, signup_tab = st.tabs(["🔐 Login", "📝 Sign Up"]) if st.session_state.show_signup else ("login", None)
-    
-    with login_tab if not st.session_state.show_signup else st.container():
-        st.markdown('<div class="login-container">', unsafe_allow_html=True)
-        
-        # Header
-        st.markdown('<div class="login-header">', unsafe_allow_html=True)
-        st.markdown('<div class="login-icon">🌍</div>', unsafe_allow_html=True)
-        st.markdown('<h1 style="text-align: center; margin-bottom: 10px;">KHISBA GIS</h1>', unsafe_allow_html=True)
-        st.markdown('<p style="color: #999999; text-align: center; margin-bottom: 10px;">3D Global Vegetation Analytics</p>', unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-        
-        # Demo credentials
-        st.markdown("""
-        <div class="demo-credentials">
-            <h4>📋 Demo Credentials</h4>
-            <p><strong>Admin:</strong> <code>admin@khisba.com</code> / <code>admin</code></p>
-            <p><strong>User:</strong> <code>user@khisba.com</code> / <code>password</code></p>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # Login form
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
-            email = st.text_input("", placeholder="Email address", key="login_email")
-            password = st.text_input("", type="password", placeholder="Password", key="login_password")
-            
-            # Remember me checkbox
-            remember_me = st.checkbox("Remember me", value=True)
-            
-            # Login button
-            if st.button("🚀 Login to Dashboard", type="primary", use_container_width=True):
-                if email and password:
-                    with st.spinner("Authenticating..."):
-                        time.sleep(0.5)  # Simulate auth delay
-                        user = authenticate_user(email, password)
-                        if user:
-                            st.session_state.authenticated = True
-                            st.session_state.user_info = user
-                            if remember_me:
-                                # Store in cookies (simplified)
-                                st.session_state.remembered_user = email
-                            st.rerun()
-                        else:
-                            st.error("❌ Invalid email or password")
-                else:
-                    st.warning("⚠️ Please enter email and password")
-            
-            # Sign up link
-            st.markdown("""
-            <div class="signup-link">
-                <p>Don't have an account? <a href="?signup=true" style="cursor: pointer;">Create one</a></p>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        st.markdown('</div>', unsafe_allow_html=True)
-    
-    # Handle signup link
-    if st.query_params.get("signup") == "true":
-        st.session_state.show_signup = True
-        st.rerun()
-    
-    st.markdown('</div>', unsafe_allow_html=True)
-    st.stop()
 
 # ==================== EARTH ENGINE INITIALIZATION ====================
 
@@ -544,7 +330,7 @@ e5aU1RW6tlG8nzHHwK2FeyI=
         st.error(f"Earth Engine auto-initialization failed: {str(e)}")
         return False
 
-# Initialize Earth Engine
+# Initialize Earth Engine on app start
 if 'ee_auto_initialized' not in st.session_state:
     with st.spinner("Initializing Earth Engine..."):
         if auto_initialize_earth_engine():
@@ -554,7 +340,7 @@ if 'ee_auto_initialized' not in st.session_state:
             st.session_state.ee_auto_initialized = False
             st.session_state.ee_initialized = False
 
-# Initialize session states
+# Initialize other session state
 if 'ee_initialized' not in st.session_state:
     st.session_state.ee_initialized = False
 if 'selected_geometry' not in st.session_state:
@@ -566,49 +352,115 @@ if 'selected_coordinates' not in st.session_state:
 if 'selected_area_name' not in st.session_state:
     st.session_state.selected_area_name = None
 
-# ==================== MAIN APPLICATION (After Authentication) ====================
+# ==================== GOOGLE AUTHENTICATION CHECK ====================
 
-# User badge in top right
-user_info = st.session_state.user_info
-if user_info:
-    # Get initials for avatar
-    initials = "".join([name[0].upper() for name in user_info["name"].split()[:2]])
-    
-    st.markdown(f"""
-    <div class="user-badge">
-        <div class="user-avatar">{initials}</div>
-        <div class="user-info">
-            <div class="user-name">{user_info["name"]}</div>
-            <div class="user-email">{user_info["email"]}</div>
+google_config = load_google_config()
+
+# Handle OAuth callback
+code = st.query_params.get("code")
+if code and not st.session_state.google_credentials and google_config:
+    with st.spinner("Authenticating with Google..."):
+        try:
+            flow = create_google_flow(google_config)
+            flow.fetch_token(code=code)
+            credentials = flow.credentials
+            st.session_state.google_credentials = credentials
+            
+            # Get user info
+            service = build('oauth2', 'v2', credentials=credentials)
+            user_info = service.userinfo().get().execute()
+            st.session_state.google_user_info = user_info
+            
+            st.query_params.clear()
+            st.rerun()
+        except Exception as e:
+            st.error(f"Authentication failed: {e}")
+            st.query_params.clear()
+
+# Show login page if not authenticated
+if not st.session_state.google_credentials:
+    st.markdown("""
+    <div class="main-container">
+        <div class="content-container" style="max-width: 500px; margin: 100px auto;">
+            <div class="card">
+                <h1 style="text-align: center; margin-bottom: 10px;">🌍 KHISBA GIS</h1>
+                <p style="text-align: center; color: #999999; margin-bottom: 30px;">3D Global Vegetation Analytics</p>
+                
+                <div style="text-align: center; padding: 20px;">
+                    <p style="color: #00ff88; font-weight: 600; margin-bottom: 20px;">Sign in with Google to access the platform</p>
+                </div>
+            </div>
         </div>
-        <button class="logout-btn" onclick="window.location.href='?logout=true'">Logout</button>
     </div>
     """, unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        if google_config:
+            try:
+                flow = create_google_flow(google_config)
+                auth_url, _ = flow.authorization_url(prompt='consent')
+                st.link_button("🔓 Login with Google", auth_url, type="primary", use_container_width=True)
+                
+                st.markdown(f"""
+                <div class="card" style="margin-top: 20px;">
+                    <p style="text-align: center; color: #666666; font-size: 12px;">
+                        Configured redirect: <code>{google_config['redirect_uris'][0]}</code>
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
+            except Exception as e:
+                st.error(f"Error creating auth flow: {e}")
+        else:
+            st.error("Google OAuth configuration not found")
+    
+    st.stop()
 
-# Handle logout
-if "logout" in st.query_params:
-    st.session_state.authenticated = False
-    st.session_state.user_info = None
-    st.query_params.clear()
-    st.rerun()
+# ==================== MAIN APPLICATION (After Authentication) ====================
 
-# Main Dashboard
+# Get user info for display
+user_info = st.session_state.google_user_info
+
+# Main Dashboard Layout
 st.markdown(f"""
-<div class="compact-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; margin-top: 20px;">
+<div class="compact-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
     <div>
         <h1>🌍 KHISBA GIS</h1>
         <p style="color: #999999; margin: 0; font-size: 14px;">Interactive 3D Global Vegetation Analytics</p>
     </div>
     <div style="display: flex; gap: 10px; align-items: center;">
+        <div class="user-badge">
+            <img src="{user_info.get('picture', '')}" alt="Profile">
+            <span>{user_info.get('name', 'User')}</span>
+        </div>
         <span class="status-badge">Connected</span>
         <span class="status-badge">3D Mapbox Globe</span>
         <span class="status-badge">v2.0</span>
-        <span class="status-badge">{user_info["role"].title()}</span>
     </div>
 </div>
 """, unsafe_allow_html=True)
 
-# ==================== HELPER FUNCTIONS ====================
+# Logout button in sidebar
+with st.sidebar:
+    st.markdown(f"""
+    <div class="card">
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
+            <img src="{user_info.get('picture', '')}" style="width: 40px; height: 40px; border-radius: 50%;">
+            <div>
+                <p style="margin: 0; font-weight: 600; color: #fff;">{user_info.get('name', 'User')}</p>
+                <p style="margin: 0; font-size: 12px; color: #999;">{user_info.get('email', '')}</p>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    if st.button("🚪 Logout", type="secondary", use_container_width=True):
+        st.session_state.google_credentials = None
+        st.session_state.google_user_info = None
+        st.query_params.clear()
+        st.rerun()
+
+# ==================== HELPER FUNCTIONS FOR EARTH ENGINE ====================
 
 def get_admin_boundaries(level, country_code=None, admin1_code=None):
     """Get administrative boundaries from Earth Engine"""
@@ -1004,17 +856,48 @@ with col2:
     st.components.v1.html(mapbox_html, height=550)
     
     st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Analysis Results Section
+    if st.session_state.analysis_results:
+        st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
+        
+        st.markdown('<div class="compact-header"><h3>Analysis Results</h3><span class="status-badge">Complete</span></div>', unsafe_allow_html=True)
+        
+        results = st.session_state.analysis_results
+        
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        st.markdown('<div class="card-title"><div class="icon">📊</div><h3 style="margin: 0;">Summary Statistics</h3></div>', unsafe_allow_html=True)
+        
+        summary_data = []
+        for index, data in results.items():
+            if data['values']:
+                values = [v for v in data['values'] if v is not None]
+                if values:
+                    summary_data.append({
+                        'Index': index,
+                        'Mean': round(sum(values) / len(values), 4),
+                        'Min': round(min(values), 4),
+                        'Max': round(max(values), 4),
+                        'Count': len(values)
+                    })
+        
+        if summary_data:
+            summary_df = pd.DataFrame(summary_data)
+            st.dataframe(summary_df, use_container_width=True, hide_index=True)
+        st.markdown('</div>', unsafe_allow_html=True)
 
 # Footer
 st.markdown("""
-<div style="text-align: center; color: #666666; font-size: 12px; padding: 20px 0; margin-top: 50px;">
+<div class="section-divider"></div>
+<div style="text-align: center; color: #666666; font-size: 12px; padding: 20px 0;">
     <p style="margin: 5px 0;">KHISBA GIS - Interactive 3D Global Vegetation Analytics Platform</p>
     <p style="margin: 5px 0;">Created by Taibi Farouk Djilali - Clean Green & Black Design</p>
     <div style="display: flex; justify-content: center; gap: 10px; margin-top: 10px;">
         <span class="status-badge">3D Mapbox</span>
         <span class="status-badge">Earth Engine</span>
         <span class="status-badge">Streamlit</span>
-        <span class="status-badge">Secure Login</span>
+        <span class="status-badge">Google Auth</span>
     </div>
 </div>
 """, unsafe_allow_html=True)
+ 
