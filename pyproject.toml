@@ -1,0 +1,16 @@
+[project]
+name = "repl-nix-workspace"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.11"
+dependencies = [
+    "earthengine-api>=1.7.10",
+    "folium>=0.20.0",
+    "google-api-python-client>=2.188.0",
+    "google-auth-oauthlib>=1.2.4",
+    "matplotlib>=3.10.8",
+    "pandas>=2.3.3",
+    "plotly>=6.5.2",
+    "streamlit>=1.53.1",
+    "streamlit-folium>=0.26.1",
+]
