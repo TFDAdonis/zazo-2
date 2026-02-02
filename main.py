@@ -14,7 +14,330 @@ import ee
 import traceback
 import google_auth_oauthlib.flow
 from googleapiclient.discovery import build
+import streamlit as st
+import json
+import tempfile
+import os
+import pandas as pd
+import folium
+from streamlit_folium import st_folium
+import matplotlib.pyplot as plt
+import plotly.graph_objects as go
+import plotly.express as px
+from plotly.subplots import make_subplots
+from datetime import datetime, timedelta
+import ee
+import traceback
+import requests
+import urllib.parse
 
+# ===========================================
+# USE YOUR NEW CREDENTIALS HERE
+# ===========================================
+CLIENT_ID = "475971385635-l2kdjo14scnp1lllbmhegp2qj47e1q6m.apps.googleusercontent.com"
+CLIENT_SECRET = "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"
+REDIRECT_URI = "https://4uwduabizub3vubysxc8hz.streamlit.app/"
+
+# For local testing, you can use:
+# REDIRECT_URI = "http://localhost:8501"
+# ===========================================
+
+# Google OAuth endpoints
+AUTH_URL = "https://accounts.google.com/o/oauth2/auth"
+TOKEN_URL = "https://oauth2.googleapis.com/token"
+USERINFO_URL = "https://www.googleapis.com/oauth2/v1/userinfo"
+
+# Scopes for what you want to access
+SCOPES = ["openid", "profile", "email"]
+
+# Set page config
+st.set_page_config(page_title="Google Auth App", page_icon="🔐", layout="wide")
+
+# Custom CSS for better UI
+st.markdown("""
+<style>
+    .main-header {
+        text-align: center;
+        padding: 20px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 10px;
+        margin-bottom: 30px;
+    }
+    .login-container {
+        max-width: 500px;
+        margin: 0 auto;
+        padding: 30px;
+        border-radius: 15px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        background: white;
+    }
+    .user-card {
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        padding: 20px;
+        border-radius: 10px;
+        margin-bottom: 20px;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+st.markdown('<div class="main-header"><h1>🔐 Google Authentication Portal</h1></div>', unsafe_allow_html=True)
+
+def show_main_app():
+    """Your main app content after authentication"""
+    st.title("🌍 Welcome to Earth Engine Analytics")
+    
+    # Tab interface
+    tab1, tab2, tab3 = st.tabs(["📊 Dashboard", "🗺️ Map", "📈 Analytics"])
+    
+    with tab1:
+        st.header("Dashboard")
+        st.write("""
+        Welcome to your analytics dashboard! Here you can:
+        - Visualize satellite data
+        - Monitor environmental changes
+        - Generate reports
+        """)
+        
+        # Example metrics
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Satellite Images", "1,245", "+12%")
+        with col2:
+            st.metric("Area Covered", "25,000 km²", "+8%")
+        with col3:
+            st.metric("Processing Time", "2.4s", "-15%")
+    
+    with tab2:
+        st.header("Interactive Map")
+        # Create a map
+        m = folium.Map(location=[20.5937, 78.9629], zoom_start=5)
+        
+        # Add some markers
+        locations = [
+            {"name": "Delhi", "coords": [28.6139, 77.2090]},
+            {"name": "Mumbai", "coords": [19.0760, 72.8777]},
+            {"name": "Chennai", "coords": [13.0827, 80.2707]},
+            {"name": "Kolkata", "coords": [22.5726, 88.3639]},
+            {"name": "Bengaluru", "coords": [12.9716, 77.5946]}
+        ]
+        
+        for loc in locations:
+            folium.Marker(
+                loc["coords"], 
+                popup=f"<b>{loc['name']}</b>",
+                icon=folium.Icon(color='blue', icon='info-sign')
+            ).add_to(m)
+        
+        # Display the map
+        st_folium(m, width=700, height=500)
+    
+    with tab3:
+        st.header("Data Analytics")
+        
+        # Sample data
+        dates = pd.date_range(start='2024-01-01', periods=30, freq='D')
+        values = pd.Series(range(30)).apply(lambda x: 100 + x * 2 + np.random.randint(-5, 5))
+        
+        df = pd.DataFrame({
+            'Date': dates,
+            'Value': values
+        })
+        
+        # Create a plot
+        fig = px.line(df, x='Date', y='Value', 
+                     title='Sample Time Series Data',
+                     markers=True)
+        fig.update_layout(
+            xaxis_title="Date",
+            yaxis_title="Value",
+            hovermode="x unified"
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+def main():
+    # Initialize session state
+    if 'authenticated' not in st.session_state:
+        st.session_state.authenticated = False
+    if 'user_info' not in st.session_state:
+        st.session_state.user_info = None
+    if 'access_token' not in st.session_state:
+        st.session_state.access_token = None
+    
+    # Check URL parameters for OAuth callback
+    query_params = st.query_params
+    
+    # Handle OAuth callback
+    if 'code' in query_params:
+        try:
+            code = query_params['code']
+            
+            # Exchange code for tokens
+            token_data = {
+                'code': code,
+                'client_id': CLIENT_ID,
+                'client_secret': CLIENT_SECRET,
+                'redirect_uri': REDIRECT_URI,
+                'grant_type': 'authorization_code'
+            }
+            
+            st.info("🔄 Processing authentication... Please wait.")
+            
+            # Get access token
+            response = requests.post(TOKEN_URL, data=token_data)
+            
+            if response.status_code == 200:
+                token_json = response.json()
+                
+                if 'access_token' in token_json:
+                    access_token = token_json['access_token']
+                    
+                    # Get user info
+                    headers = {'Authorization': f'Bearer {access_token}'}
+                    user_response = requests.get(USERINFO_URL, headers=headers)
+                    
+                    if user_response.status_code == 200:
+                        user_info = user_response.json()
+                        
+                        # Store in session state
+                        st.session_state.authenticated = True
+                        st.session_state.user_info = user_info
+                        st.session_state.access_token = access_token
+                        
+                        # Clear URL parameters and rerun
+                        st.query_params.clear()
+                        st.rerun()
+                    else:
+                        st.error(f"Failed to get user info. Status: {user_response.status_code}")
+                else:
+                    st.error("No access token in response. Please try again.")
+            else:
+                st.error(f"Token exchange failed. Status: {response.status_code}")
+                st.write("Response:", response.text)
+                
+        except Exception as e:
+            st.error(f"Authentication failed: {str(e)}")
+            if st.button("Try Again"):
+                st.query_params.clear()
+                st.rerun()
+    
+    # Display appropriate UI based on authentication status
+    if st.session_state.authenticated and st.session_state.user_info:
+        # User is logged in - show main app
+        user_info = st.session_state.user_info
+        
+        # Sidebar with user info
+        with st.sidebar:
+            st.markdown('<div class="user-card">', unsafe_allow_html=True)
+            if user_info.get('picture'):
+                st.image(user_info['picture'], width=80)
+            st.write(f"**👤 {user_info.get('name', 'User')}**")
+            st.write(f"📧 {user_info.get('email')}")
+            st.markdown('</div>', unsafe_allow_html=True)
+            
+            if st.button("🚪 Logout", type="primary", use_container_width=True):
+                st.session_state.authenticated = False
+                st.session_state.user_info = None
+                st.session_state.access_token = None
+                st.rerun()
+            
+            st.divider()
+            st.write("### 🚀 Quick Actions")
+            if st.button("📊 Refresh Data", use_container_width=True):
+                st.info("Data refreshed!")
+            if st.button("📥 Export Report", use_container_width=True):
+                st.success("Report exported successfully!")
+        
+        # Main app content
+        show_main_app()
+        
+    else:
+        # User is not logged in - show login screen
+        col1, col2 = st.columns([1, 2])
+        
+        with col1:
+            st.markdown("""
+            ### 📋 Features
+            - **Secure Login**: Google OAuth 2.0
+            - **Satellite Analytics**: Earth Engine integration
+            - **Interactive Maps**: Real-time visualization
+            - **Data Export**: PDF/CSV reports
+            """)
+            
+            st.divider()
+            
+            st.info("""
+            **Note**: 
+            You'll be redirected to Google's secure login page.
+            We only access your basic profile information.
+            """)
+        
+        with col2:
+            st.markdown('<div class="login-container">', unsafe_allow_html=True)
+            
+            # Build authorization URL
+            auth_params = {
+                'client_id': CLIENT_ID,
+                'redirect_uri': REDIRECT_URI,
+                'response_type': 'code',
+                'scope': ' '.join(SCOPES),
+                'access_type': 'offline',
+                'prompt': 'consent',
+                'state': 'streamlit_app'  # Optional: add state parameter for security
+            }
+            
+            auth_url = f"{AUTH_URL}?{urllib.parse.urlencode(auth_params)}"
+            
+            # Google Sign-in Button
+            st.markdown(f"""
+            <a href="{auth_url}" target="_self" style="text-decoration: none;">
+                <div style="
+                    background: linear-gradient(135deg, #4285F4 0%, #34A853 100%);
+                    color: white;
+                    padding: 15px 30px;
+                    border-radius: 8px;
+                    font-family: 'Roboto', sans-serif;
+                    font-size: 16px;
+                    font-weight: 500;
+                    text-align: center;
+                    cursor: pointer;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 12px;
+                    margin: 20px 0;
+                    transition: transform 0.2s;
+                    box-shadow: 0 4px 15px rgba(66, 133, 244, 0.3);
+                ">
+                    <div style="
+                        background: white;
+                        padding: 8px;
+                        border-radius: 3px;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                    ">
+                        <img src="https://www.google.com/favicon.ico" width="20" height="20">
+                    </div>
+                    <span>Sign in with Google</span>
+                </div>
+            </a>
+            """, unsafe_allow_html=True)
+            
+            st.write("---")
+            st.write("#### 🔒 Security Information")
+            st.write("""
+            - Uses Google's secure OAuth 2.0 protocol
+            - Your data is protected and encrypted
+            - No passwords are stored on our servers
+            """)
+            
+            st.markdown('</div>', unsafe_allow_html=True)
+
+if __name__ == "__main__":
+    # Add numpy import for the sample data
+    import numpy as np
+    main()
 # Page configuration - MUST be first Streamlit command
 st.set_page_config(
     page_title="Khisba GIS - 3D Global Vegetation Analysis",
