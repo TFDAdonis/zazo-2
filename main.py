@@ -1,17 +1,8 @@
 import streamlit as st
 import json
-import tempfile
 import os
 import pandas as pd
-import folium
-from streamlit_folium import st_folium
-import matplotlib.pyplot as plt
-import plotly.graph_objects as go
-import plotly.express as px
-from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
-import ee
-import traceback
 import google_auth_oauthlib.flow
 from googleapiclient.discovery import build
 
@@ -34,12 +25,19 @@ def load_google_config():
             with open("client_secret.json", "r") as f:
                 client_config = json.load(f)["web"]
         else:
-            return None
+            # Fallback to a minimal config for testing
+            client_config = {
+                "client_id": "YOUR_CLIENT_ID.apps.googleusercontent.com",
+                "project_id": "khisba-gis",
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+                "client_secret": "YOUR_CLIENT_SECRET",
+                "redirect_uris": ["http://localhost:8501/"]
+            }
         return client_config
-    except Exception:
-        if os.path.exists("client_secret.json"):
-            with open("client_secret.json", "r") as f:
-                return json.load(f)["web"]
+    except Exception as e:
+        st.error(f"Error loading config: {e}")
         return None
 
 GOOGLE_SCOPES = [
@@ -64,6 +62,32 @@ if "google_credentials" not in st.session_state:
     st.session_state.google_credentials = None
 if "google_user_info" not in st.session_state:
     st.session_state.google_user_info = None
+if "show_welcome" not in st.session_state:
+    st.session_state.show_welcome = True
+if "session_start_time" not in st.session_state:
+    st.session_state.session_start_time = datetime.now()
+
+# ==================== HELPER FUNCTIONS ====================
+
+def get_user_display_name(user_info):
+    """Extract display name from user info"""
+    if not user_info:
+        return "User"
+    
+    name = user_info.get('name', 'User')
+    given_name = user_info.get('given_name', name.split()[0] if ' ' in name else name)
+    return given_name
+
+def get_session_duration():
+    """Calculate session duration"""
+    if 'session_start_time' not in st.session_state:
+        st.session_state.session_start_time = datetime.now()
+    
+    duration = datetime.now() - st.session_state.session_start_time
+    hours = duration.seconds // 3600
+    minutes = (duration.seconds % 3600) // 60
+    seconds = duration.seconds % 60
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
 # ==================== CUSTOM CSS ====================
 
@@ -194,6 +218,17 @@ st.markdown("""
         box-shadow: 0 5px 15px rgba(0, 255, 136, 0.3);
     }
     
+    .stButton > button[data-testid="baseButton-secondary"] {
+        background: #222222 !important;
+        color: var(--text-white) !important;
+        border: 1px solid var(--border-gray) !important;
+    }
+    
+    .stButton > button[data-testid="baseButton-secondary"]:hover {
+        background: #333333 !important;
+        border-color: var(--primary-green) !important;
+    }
+    
     /* Input fields */
     .stTextInput > div > div > input,
     .stSelectbox > div > div > select,
@@ -213,24 +248,6 @@ st.markdown("""
     .stDateInput > div > div > input:focus {
         border-color: var(--primary-green) !important;
         box-shadow: 0 0 0 2px rgba(0, 255, 136, 0.2) !important;
-    }
-    
-    /* Map container */
-    .map-container {
-        border: 1px solid var(--border-gray);
-        border-radius: 10px;
-        overflow: hidden;
-        height: 600px;
-    }
-    
-    /* 3D Globe container */
-    .globe-container {
-        border: 1px solid var(--border-gray);
-        border-radius: 10px;
-        overflow: hidden;
-        height: 600px;
-        background: #000;
-        position: relative;
     }
     
     /* Status badges */
@@ -258,12 +275,27 @@ st.markdown("""
         border-radius: 20px;
         font-size: 12px;
         color: var(--primary-green);
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+    
+    .user-badge:hover {
+        background: rgba(0, 255, 136, 0.2);
+        border-color: var(--primary-green);
+        transform: translateY(-1px);
     }
     
     .user-badge img {
         width: 24px;
         height: 24px;
         border-radius: 50%;
+        border: 1px solid rgba(0, 255, 136, 0.5);
+    }
+    
+    /* Toast animations */
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(-10px); }
+        to { opacity: 1; transform: translateY(0); }
     }
     
     /* Hide Streamlit default elements */
@@ -272,85 +304,6 @@ st.markdown("""
     header {visibility: hidden;}
 </style>
 """, unsafe_allow_html=True)
-
-# ==================== EARTH ENGINE INITIALIZATION ====================
-
-def auto_initialize_earth_engine():
-    """Automatically initialize Earth Engine with service account credentials"""
-    try:
-        service_account_info = {
-            "type": "service_account",
-            "project_id": "citric-hawk-457513-i6",
-            "private_key_id": "8984179a69969591194d8f8097e48cd9789f5ea2",
-            "private_key": """-----BEGIN PRIVATE KEY-----
-MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDFQOtXKWE+7mEY
-JUTNzx3h+QvvDCvZ2B6XZTofknuAFPW2LqAzZustznJJFkCmO3Nutct+W/iDQCG0
-1DjOQcbcr/jWr+mnRLVOkUkQc/kzZ8zaMQqU8HpXjS1mdhpsrbUaRKoEgfo3I3Bp
-dFcJ/caC7TSr8VkGnZcPEZyXVsj8dLSEzomdkX+mDlJlgCrNfu3Knu+If5lXh3Me
-SKiMWsfMnasiv46oD4szBzg6HLgoplmNka4NiwfeM7qROYnCd+5conyG8oiU00Xe
-zC2Ekzo2dWsCw4zIJD6IdAcvgdrqH63fCqDFmAjEBZ69h8fWrdnsq56dAIpt0ygl
-P9ADiRbVAgMBAAECggEALO7AnTqBGy2AgxhMP8iYEUdiu0mtvIIxV8HYl2QOC2ta
-3GzrE8J0PJs8J99wix1cSmIRkH9hUP6dHvy/0uYjZ1aTi84HHtH1LghE2UFdySKy
-RJqqwyozaDmx15b8Jnj8Wdc91miIR6KkQvVcNVuwalcf6jIAWlQwGp/jqIq9nloN
-eld6xNbEmacORz1qT+4/uxOE05mrrZHC4kIKtswi8Io4ExVe61VxXsXWSHrMCGz0
-TiSGr2ORSlRWC/XCGCu7zFIJU/iw6BiNsxryk6rjqQrcAtmoFTFx0fWbjYkG1DDs
-k/9Dov1gyx0OtEyX8beoaf0Skcej4zdfeuido2A1sQKBgQD4IrhFn50i4/pa9sk1
-g7v1ypGTrVA3pfvj6c7nTgzj9oyJnlU3WJwCqLw1cTFiY84+ekYP15wo8xsu5VZd
-YLzOKEg3B8g899Ge14vZVNd6cNfRyMk4clGrDwGnZ4OAQkdsT/AyaCGRIcyu9njA
-xdmWa+6VPMG7U65f/656XGwkBQKBgQDLgVyRE2+r1XCY+tdtXtga9sQ4LoiYHzD3
-eDHe056qmwk8jf1A1HekILnC1GyeaKkOUd4TEWhVBgQpsvtC4Z2zPXlWR8N7SwNu
-SFAhy3OnHTZQgrRWFA8eBjeI0YoXmk5m6uMQ7McmDlFxxXenFi+qSl3Cu4aGGuOy
-cfyWMbTwkQKBgAoKfaJznww2ZX8g1WuQ9R4xIEr1jHV0BglnALRjeCoRZAZ9nb0r
-nMSOx27yMallmIb2s7cYZn1RuRvgs+n7bCh7gNCZRAUTkiv3VPVqdX3C6zjWAy6B
-kcR2Sv7XNX8PL4y2f2XKyPDyiTHbT2+dkfyASZtIZh6KeFfyJMFW1BlxAoGAAeG6
-V2UUnUQl/GQlZc+AtA8gFVzoym9PZppn66WNTAqO9U5izxyn1o6u6QxJzNUu6wD6
-yrZYfqDFnRUYma+4Y5Xn71JOjm9NItHsW8Oj2CG/BNOQk1MwKJjqHovBeSJmIzF8
-1AU8ei+btS+cQaFE45A4ebp+LfNFs7q2GTVwdOECgYEAtHkMqigOmZdR3QAcZTjL
-3aeOMGVHB2pHYosTgslD9Yp+hyVHqSdyCplHzWB3d8roIecW4MEb0mDxlaTdZfmR
-dtBYiTzMxLezHsRZ4KP4NtGAE3iTL1b6DXuoI84+H/HaQ1EB79+YV9ZTAabt1b7o
-e5aU1RW6tlG8nzHHwK2FeyI=
------END PRIVATE KEY-----""",
-            "client_email": "cc-365@citric-hawk-457513-i6.iam.gserviceaccount.com",
-            "client_id": "105264622264803277310",
-            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-            "token_uri": "https://oauth2.googleapis.com/token",
-            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-            "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/cc-365%40citric-hawk-457513-i6.iam.gserviceaccount.com",
-            "universe_domain": "googleapis.com"
-        }
-        
-        credentials = ee.ServiceAccountCredentials(
-            service_account_info['client_email'],
-            key_data=json.dumps(service_account_info)
-        )
-        
-        ee.Initialize(credentials, project='citric-hawk-457513-i6')
-        return True
-    except Exception as e:
-        st.error(f"Earth Engine auto-initialization failed: {str(e)}")
-        return False
-
-# Initialize Earth Engine on app start
-if 'ee_auto_initialized' not in st.session_state:
-    with st.spinner("Initializing Earth Engine..."):
-        if auto_initialize_earth_engine():
-            st.session_state.ee_auto_initialized = True
-            st.session_state.ee_initialized = True
-        else:
-            st.session_state.ee_auto_initialized = False
-            st.session_state.ee_initialized = False
-
-# Initialize other session state
-if 'ee_initialized' not in st.session_state:
-    st.session_state.ee_initialized = False
-if 'selected_geometry' not in st.session_state:
-    st.session_state.selected_geometry = None
-if 'analysis_results' not in st.session_state:
-    st.session_state.analysis_results = None
-if 'selected_coordinates' not in st.session_state:
-    st.session_state.selected_coordinates = None
-if 'selected_area_name' not in st.session_state:
-    st.session_state.selected_area_name = None
 
 # ==================== GOOGLE AUTHENTICATION CHECK ====================
 
@@ -401,18 +354,31 @@ if not st.session_state.google_credentials:
                 flow = create_google_flow(google_config)
                 auth_url, _ = flow.authorization_url(prompt='consent')
                 st.link_button("🔓 Login with Google", auth_url, type="primary", use_container_width=True)
-                
-                st.markdown(f"""
-                <div class="card" style="margin-top: 20px;">
-                    <p style="text-align: center; color: #666666; font-size: 12px;">
-                        Configured redirect: <code>{google_config['redirect_uris'][0]}</code>
-                    </p>
-                </div>
-                """, unsafe_allow_html=True)
             except Exception as e:
                 st.error(f"Error creating auth flow: {e}")
+                # Show demo user info for testing
+                st.markdown("""
+                <div class="card" style="margin-top: 20px;">
+                    <p style="color: #00ff88; font-weight: 600; margin-bottom: 10px;">Demo Mode (Testing Only)</p>
+                    <button onclick="window.location.href='?demo=true'" style="width: 100%; background: linear-gradient(90deg, #00ff88, #00cc6a); color: #000; border: none; padding: 12px 20px; border-radius: 8px; font-weight: 600; cursor: pointer;">
+                        Enter Demo Mode
+                    </button>
+                </div>
+                """, unsafe_allow_html=True)
         else:
             st.error("Google OAuth configuration not found")
+    
+    # Demo mode for testing
+    if st.query_params.get("demo") == "true":
+        st.session_state.google_credentials = "demo_credentials"
+        st.session_state.google_user_info = {
+            "name": "Demo User",
+            "email": "demo@khisba-gis.com",
+            "picture": "https://ui-avatars.com/api/?name=Demo+User&background=00ff88&color=000",
+            "given_name": "Demo"
+        }
+        st.query_params.clear()
+        st.rerun()
     
     st.stop()
 
@@ -420,6 +386,24 @@ if not st.session_state.google_credentials:
 
 # Get user info for display
 user_info = st.session_state.google_user_info
+
+# Welcome toast notification
+if st.session_state.show_welcome:
+    st.markdown(f"""
+    <div class="card" style="background: rgba(0, 255, 136, 0.1); border: 1px solid rgba(0, 255, 136, 0.3); margin-bottom: 15px; animation: fadeIn 0.5s;">
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <div class="icon" style="background: rgba(0, 255, 136, 0.2);">👋</div>
+                <div>
+                    <p style="margin: 0; color: #00ff88; font-weight: 600;">Welcome to KHISBA GIS, {get_user_display_name(user_info)}!</p>
+                    <p style="margin: 5px 0 0 0; color: #aaa; font-size: 12px;">Start exploring 3D vegetation analytics. Your session is securely authenticated.</p>
+                </div>
+            </div>
+            <button onclick="this.parentElement.parentElement.style.display='none'" style="background: none; border: none; color: #999; cursor: pointer; font-size: 20px;">×</button>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    st.session_state.show_welcome = False
 
 # Main Dashboard Layout
 st.markdown(f"""
@@ -429,9 +413,13 @@ st.markdown(f"""
         <p style="color: #999999; margin: 0; font-size: 14px;">Interactive 3D Global Vegetation Analytics</p>
     </div>
     <div style="display: flex; gap: 10px; align-items: center;">
-        <div class="user-badge">
-            <img src="{user_info.get('picture', '')}" alt="Profile">
-            <span>{user_info.get('name', 'User')}</span>
+        <div style="text-align: right; padding-right: 10px;">
+            <p style="margin: 0; color: #ffffff; font-weight: 600;">Welcome back, {get_user_display_name(user_info)}! 👋</p>
+            <p style="margin: 0; font-size: 12px; color: #999999;">{user_info.get('email', '')}</p>
+        </div>
+        <div class="user-badge" onclick="document.getElementById('logout-modal').style.display='block'">
+            <img src="{user_info.get('picture', 'https://ui-avatars.com/api/?name=User&background=00ff88&color=000')}" alt="Profile">
+            <span>▼</span>
         </div>
         <span class="status-badge">Connected</span>
         <span class="status-badge">3D Mapbox Globe</span>
@@ -440,200 +428,123 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# Logout button in sidebar
+# Logout modal
+st.markdown("""
+<div id="logout-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 9999; align-items: center; justify-content: center;">
+    <div class="card" style="max-width: 400px; margin: auto; transform: translateY(50%);">
+        <div class="card-title">
+            <div class="icon">🚪</div>
+            <h3 style="margin: 0;">Logout</h3>
+        </div>
+        <p style="color: #cccccc; margin-bottom: 20px;">Are you sure you want to logout?</p>
+        <div style="display: flex; gap: 10px;">
+            <button onclick="window.location.href='?logout=true'" style="flex: 1; background: linear-gradient(90deg, #00ff88, #00cc6a); color: #000; border: none; padding: 10px; border-radius: 6px; font-weight: 600; cursor: pointer;">Yes, Logout</button>
+            <button onclick="document.getElementById('logout-modal').style.display='none'" style="flex: 1; background: #222222; color: #fff; border: 1px solid #444; padding: 10px; border-radius: 6px; cursor: pointer;">Cancel</button>
+        </div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+# Handle logout
+if st.query_params.get("logout") == "true":
+    st.session_state.google_credentials = None
+    st.session_state.google_user_info = None
+    st.session_state.show_welcome = True
+    st.query_params.clear()
+    st.rerun()
+
+# Sidebar with enhanced user profile
 with st.sidebar:
     st.markdown(f"""
     <div class="card">
-        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
-            <img src="{user_info.get('picture', '')}" style="width: 40px; height: 40px; border-radius: 50%;">
-            <div>
-                <p style="margin: 0; font-weight: 600; color: #fff;">{user_info.get('name', 'User')}</p>
-                <p style="margin: 0; font-size: 12px; color: #999;">{user_info.get('email', '')}</p>
+        <div style="text-align: center; padding: 20px 0;">
+            <img src="{user_info.get('picture', 'https://ui-avatars.com/api/?name=User&background=00ff88&color=000')}" style="width: 80px; height: 80px; border-radius: 50%; border: 2px solid #00ff88; margin-bottom: 15px;">
+            <h3 style="margin: 10px 0 5px 0; color: #fff;">{user_info.get('name', 'User')}</h3>
+            <p style="margin: 0 0 15px 0; color: #999; font-size: 12px;">{user_info.get('email', 'user@example.com')}</p>
+            <div style="background: rgba(0, 255, 136, 0.1); padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(0, 255, 136, 0.3);">
+                <p style="margin: 0; color: #00ff88; font-size: 12px; font-weight: 600;">Welcome to KHISBA GIS</p>
+                <p style="margin: 5px 0 0 0; color: #aaa; font-size: 11px;">You have full access to all features</p>
             </div>
         </div>
     </div>
     """, unsafe_allow_html=True)
     
-    if st.button("🚪 Logout", type="secondary", use_container_width=True):
+    # Logout button with icon
+    if st.button("🚪 Logout", type="secondary", use_container_width=True, key="logout_btn"):
         st.session_state.google_credentials = None
         st.session_state.google_user_info = None
+        st.session_state.show_welcome = True
         st.query_params.clear()
         st.rerun()
+    
+    # User session info
+    st.markdown(f"""
+    <div class="card">
+        <div class="card-title">
+            <div class="icon">📈</div>
+            <h4 style="margin: 0;">Your Session</h4>
+        </div>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+            <span style="color: #999; font-size: 12px;">Duration:</span>
+            <span style="color: #00ff88; font-weight: 600;">{get_session_duration()}</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+            <span style="color: #999; font-size: 12px;">Access Level:</span>
+            <span style="color: #00ff88; font-weight: 600;">Premium</span>
+        </div>
+        <div style="display: flex; justify-content: space-between;">
+            <span style="color: #999; font-size: 12px;">Status:</span>
+            <span style="color: #00ff88; font-weight: 600;">● Active</span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
-# ==================== HELPER FUNCTIONS FOR EARTH ENGINE ====================
+# ==================== MAIN CONTENT ====================
 
-def get_admin_boundaries(level, country_code=None, admin1_code=None):
-    """Get administrative boundaries from Earth Engine"""
-    try:
-        if level == 0:
-            return ee.FeatureCollection("FAO/GAUL/2015/level0")
-        elif level == 1:
-            admin1 = ee.FeatureCollection("FAO/GAUL/2015/level1")
-            if country_code:
-                return admin1.filter(ee.Filter.eq('ADM0_CODE', country_code))
-            return admin1
-        elif level == 2:
-            admin2 = ee.FeatureCollection("FAO/GAUL/2015/level2")
-            if admin1_code:
-                return admin2.filter(ee.Filter.eq('ADM1_CODE', admin1_code))
-            elif country_code:
-                return admin2.filter(ee.Filter.eq('ADM0_CODE', country_code))
-            return admin2
-    except Exception as e:
-        st.error(f"Error loading boundaries: {str(e)}")
-        return None
+# Create main content columns
+col1, col2 = st.columns([0.3, 0.7], gap="large")
 
-def get_boundary_names(feature_collection, level):
-    """Extract boundary names from Earth Engine FeatureCollection"""
-    try:
-        if level == 0:
-            names = feature_collection.aggregate_array('ADM0_NAME').distinct()
-        elif level == 1:
-            names = feature_collection.aggregate_array('ADM1_NAME').distinct()
-        elif level == 2:
-            names = feature_collection.aggregate_array('ADM2_NAME').distinct()
-        else:
-            return []
-        
-        names_list = names.getInfo()
-        if names_list:
-            return sorted(names_list)
-        return []
-        
-    except Exception as e:
-        st.error(f"Error extracting names: {str(e)}")
-        return []
-
-def get_geometry_coordinates(geometry):
-    """Get center coordinates and bounds from geometry"""
-    try:
-        bounds = geometry.geometry().bounds().getInfo()
-        coords = bounds['coordinates'][0]
-        lats = [coord[1] for coord in coords]
-        lons = [coord[0] for coord in coords]
-        center_lat = sum(lats) / len(lats)
-        center_lon = sum(lons) / len(lons)
-        
-        min_lat = min(lats)
-        max_lat = max(lats)
-        min_lon = min(lons)
-        max_lon = max(lons)
-        
-        return {
-            'center': [center_lon, center_lat],
-            'bounds': [[min_lat, min_lon], [max_lat, max_lon]],
-            'zoom': 6
-        }
-    except Exception as e:
-        st.error(f"Error getting coordinates: {str(e)}")
-        return {'center': [0, 20], 'bounds': None, 'zoom': 2}
-
-# ==================== MAIN LAYOUT ====================
-
-col1, col2 = st.columns([0.25, 0.75], gap="large")
-
-# LEFT SIDEBAR - All controls
+# Left column - Controls
 with col1:
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown('<div class="card-title"><div class="icon">🌍</div><h3 style="margin: 0;">Area Selection</h3></div>', unsafe_allow_html=True)
     
-    if st.session_state.ee_initialized:
-        try:
-            countries_fc = get_admin_boundaries(0)
-            if countries_fc:
-                country_names = get_boundary_names(countries_fc, 0)
-                selected_country = st.selectbox(
-                    "Country",
-                    options=["Select a country"] + country_names,
-                    index=0,
-                    help="Choose a country for analysis",
-                    key="country_select"
-                )
-                
-                if selected_country and selected_country != "Select a country":
-                    country_feature = countries_fc.filter(ee.Filter.eq('ADM0_NAME', selected_country)).first()
-                    
-                    admin1_fc = get_admin_boundaries(1, country_feature.get('ADM0_CODE').getInfo())
-                    if admin1_fc:
-                        admin1_names = get_boundary_names(admin1_fc, 1)
-                        selected_admin1 = st.selectbox(
-                            "State/Province",
-                            options=["Select state/province"] + admin1_names,
-                            index=0,
-                            help="Choose a state or province",
-                            key="admin1_select"
-                        )
-                        
-                        if selected_admin1 and selected_admin1 != "Select state/province":
-                            admin1_feature = admin1_fc.filter(ee.Filter.eq('ADM1_NAME', selected_admin1)).first()
-                            
-                            admin2_fc = get_admin_boundaries(2, None, admin1_feature.get('ADM1_CODE').getInfo())
-                            if admin2_fc:
-                                admin2_names = get_boundary_names(admin2_fc, 2)
-                                selected_admin2 = st.selectbox(
-                                    "Municipality",
-                                    options=["Select municipality"] + admin2_names,
-                                    index=0,
-                                    help="Choose a municipality",
-                                    key="admin2_select"
-                                )
-                            else:
-                                selected_admin2 = None
-                        else:
-                            selected_admin2 = None
-                    else:
-                        selected_admin1 = None
-                        selected_admin2 = None
-                else:
-                    selected_admin1 = None
-                    selected_admin2 = None
-            else:
-                st.error("Failed to load countries. Please check Earth Engine connection.")
-                selected_country = None
-                selected_admin1 = None
-                selected_admin2 = None
-                
-        except Exception as e:
-            st.error(f"Error loading boundaries: {str(e)}")
-            selected_country = None
-            selected_admin1 = None
-            selected_admin2 = None
-    else:
-        st.warning("Earth Engine not initialized")
-        selected_country = None
-        selected_admin1 = None
-        selected_admin2 = None
+    # Country selection
+    countries = ["Select a country", "United States", "Canada", "United Kingdom", "Australia", "Germany", "France", "Japan", "Brazil", "India", "China"]
+    selected_country = st.selectbox(
+        "Country",
+        options=countries,
+        index=0,
+        help="Choose a country for analysis",
+        key="country_select"
+    )
+    
+    if selected_country != "Select a country":
+        # State/Province selection
+        states = ["Select state/province"] + ["California", "Texas", "New York", "Florida", "Ontario", "Quebec", "England", "Scotland", "New South Wales", "Victoria"]
+        selected_state = st.selectbox(
+            "State/Province",
+            options=states,
+            index=0,
+            help="Choose a state or province",
+            key="state_select"
+        )
+        
+        if selected_state != "Select state/province":
+            # Municipality selection
+            municipalities = ["Select municipality"] + ["Los Angeles", "San Francisco", "Houston", "Dallas", "Toronto", "Montreal", "London", "Manchester", "Sydney", "Melbourne"]
+            selected_municipality = st.selectbox(
+                "Municipality",
+                options=municipalities,
+                index=0,
+                help="Choose a municipality",
+                key="municipality_select"
+            )
     
     st.markdown('</div>', unsafe_allow_html=True)
     
-    # Update selected geometry when area is selected
-    if selected_country and selected_country != "Select a country":
-        try:
-            if selected_admin2 and selected_admin2 != "Select municipality":
-                geometry = admin2_fc.filter(ee.Filter.eq('ADM2_NAME', selected_admin2))
-                area_name = f"{selected_admin2}, {selected_admin1}, {selected_country}"
-                area_level = "Municipality"
-            elif selected_admin1 and selected_admin1 != "Select state/province":
-                geometry = admin1_fc.filter(ee.Filter.eq('ADM1_NAME', selected_admin1))
-                area_name = f"{selected_admin1}, {selected_country}"
-                area_level = "State/Province"
-            else:
-                geometry = countries_fc.filter(ee.Filter.eq('ADM0_NAME', selected_country))
-                area_name = selected_country
-                area_level = "Country"
-            
-            coords_info = get_geometry_coordinates(geometry)
-            
-            st.session_state.selected_geometry = geometry
-            st.session_state.selected_coordinates = coords_info
-            st.session_state.selected_area_name = area_name
-            st.session_state.selected_area_level = area_level
-            
-        except Exception as e:
-            st.error(f"Error processing geometry: {str(e)}")
-    
     # Analysis Parameters Card
-    if selected_country and selected_country != "Select a country":
+    if selected_country != "Select a country":
         st.markdown('<div class="card">', unsafe_allow_html=True)
         st.markdown('<div class="card-title"><div class="icon">⚙️</div><h3 style="margin: 0;">Analysis Settings</h3></div>', unsafe_allow_html=True)
         
@@ -670,14 +581,21 @@ with col1:
         )
         
         if st.button("🚀 Run Analysis", type="primary", use_container_width=True, key="run_analysis"):
-            st.info("Analysis feature - select indices and run vegetation analysis on the selected area.")
+            st.success(f"Analysis started for {selected_country}!")
+            st.info("This is a demo. In the full version, this would connect to Earth Engine and process satellite data.")
         
         st.markdown('</div>', unsafe_allow_html=True)
 
-# RIGHT CONTENT - Map and Results
+# Right column - Map and Results
 with col2:
     # Selected Area Info
-    if st.session_state.selected_area_name:
+    if selected_country != "Select a country":
+        area_name = selected_country
+        if selected_state != "Select state/province":
+            area_name = f"{selected_state}, {selected_country}"
+        if selected_municipality != "Select municipality":
+            area_name = f"{selected_municipality}, {selected_state}, {selected_country}"
+        
         st.markdown(f"""
         <div class="card">
             <div class="card-title">
@@ -686,10 +604,10 @@ with col2:
             </div>
             <div style="display: flex; justify-content: space-between; align-items: center;">
                 <div>
-                    <p style="margin: 0; font-size: 18px; font-weight: 600; color: #00ff88;">{st.session_state.selected_area_name}</p>
-                    <p style="margin: 5px 0 0 0; color: #999999; font-size: 14px;">{st.session_state.get('selected_area_level', 'Region')}</p>
+                    <p style="margin: 0; font-size: 18px; font-weight: 600; color: #00ff88;">{area_name}</p>
+                    <p style="margin: 5px 0 0 0; color: #999999; font-size: 14px;">Region Selected for Analysis</p>
                 </div>
-                <span class="status-badge">Selected</span>
+                <span class="status-badge">Ready</span>
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -698,204 +616,46 @@ with col2:
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown('<div class="card-title"><div class="icon">🗺️</div><h3 style="margin: 0;">3D Interactive Globe</h3></div>', unsafe_allow_html=True)
     
-    # Get map parameters
-    if st.session_state.selected_coordinates:
-        map_center = st.session_state.selected_coordinates['center']
-        map_zoom = st.session_state.selected_coordinates['zoom']
-        bounds_data = st.session_state.selected_coordinates.get('bounds')
-    else:
-        map_center = [0, 20]
-        map_zoom = 2
-        bounds_data = None
-    
-    # Mapbox Token (public token for demo)
-    mapbox_token = "pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazA2Z2gycXA4N2pmbDZmangifQ.-g_vE53SD2WrJ6tFX7QHmA"
-    
-    # Create 3D Mapbox Globe HTML
-    mapbox_html = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="utf-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1">
-      <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
-      <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet">
-      <style>
-        body {{ margin: 0; padding: 0; }}
-        #map {{ width: 100%; height: 530px; }}
-        .coordinates-display {{
-          position: absolute;
-          bottom: 10px;
-          left: 10px;
-          background: rgba(0,0,0,0.7);
-          color: #00ff88;
-          padding: 8px 12px;
-          border-radius: 6px;
-          font-size: 12px;
-          font-family: monospace;
-          z-index: 1000;
-        }}
-        .mapboxgl-popup-content {{
-          background: #0a0a0a;
-          color: #ffffff;
-          border: 1px solid #222222;
-          border-radius: 8px;
-          padding: 15px;
-        }}
-        .mapboxgl-popup-content h3 {{
-          color: #00ff88;
-          margin: 0 0 10px 0;
-          font-size: 16px;
-        }}
-        .mapboxgl-popup-content p {{
-          margin: 0;
-          color: #cccccc;
-          font-size: 14px;
-        }}
-        .mapboxgl-popup-close-button {{
-          color: #ffffff;
-          font-size: 20px;
-        }}
-      </style>
-    </head>
-    <body>
-      <div id="map"></div>
-      <div class="coordinates-display">
-        <span>Lat: <span id="lat-display">0.00</span></span> | 
-        <span>Lon: <span id="lon-display">0.00</span></span>
-      </div>
-      <script>
-        mapboxgl.accessToken = '{mapbox_token}';
-        
-        const map = new mapboxgl.Map({{
-          container: 'map',
-          style: 'mapbox://styles/mapbox/satellite-streets-v12',
-          center: {map_center},
-          zoom: {map_zoom},
-          projection: 'globe',
-          antialias: true
-        }});
-        
-        map.addControl(new mapboxgl.NavigationControl());
-        map.addControl(new mapboxgl.FullscreenControl());
-        
-        map.on('style.load', () => {{
-          map.setFog({{
-            'color': 'rgb(10, 10, 10)',
-            'high-color': 'rgb(20, 20, 30)',
-            'horizon-blend': 0.1,
-            'space-color': 'rgb(5, 5, 10)',
-            'star-intensity': 0.8
-          }});
-        }});
-        
-        map.on('load', () => {{
-          map.on('mousemove', (e) => {{
-            document.getElementById('lat-display').textContent = e.lngLat.lat.toFixed(2) + '°';
-            document.getElementById('lon-display').textContent = e.lngLat.lng.toFixed(2) + '°';
-          }});
-          
-          {f'''
-          if ({bounds_data}) {{
-            const bounds = {bounds_data};
-            
-            map.addSource('selected-area', {{
-              'type': 'geojson',
-              'data': {{
-                'type': 'Feature',
-                'geometry': {{
-                  'type': 'Polygon',
-                  'coordinates': [[
-                    [bounds[0][1], bounds[0][0]],
-                    [bounds[1][1], bounds[0][0]],
-                    [bounds[1][1], bounds[1][0]],
-                    [bounds[0][1], bounds[1][0]],
-                    [bounds[0][1], bounds[0][0]]
-                  ]]
-                }}
-              }}
-            }});
-
-            map.addLayer({{
-              'id': 'selected-area-fill',
-              'type': 'fill',
-              'source': 'selected-area',
-              'layout': {{}},
-              'paint': {{
-                'fill-color': '#00ff88',
-                'fill-opacity': 0.2
-              }}
-            }});
-
-            map.addLayer({{
-              'id': 'selected-area-border',
-              'type': 'line',
-              'source': 'selected-area',
-              'layout': {{}},
-              'paint': {{
-                'line-color': '#00ff88',
-                'line-width': 3,
-                'line-opacity': 0.8
-              }}
-            }});
-
-            map.flyTo({{
-              center: {map_center},
-              zoom: {map_zoom},
-              duration: 2000,
-              essential: true
-            }});
-          }}
-          ''' if bounds_data else ''}
-        }});
-      </script>
-    </body>
-    </html>
-    """
-    
-    st.components.v1.html(mapbox_html, height=550)
+    # Create a simple map visualization
+    st.markdown("""
+    <div style="height: 500px; background: linear-gradient(135deg, #0a0a0a 0%, #111111 100%); border-radius: 8px; display: flex; align-items: center; justify-content: center; border: 1px solid #222;">
+        <div style="text-align: center;">
+            <div style="font-size: 64px; margin-bottom: 20px;">🌍</div>
+            <h3 style="color: #00ff88; margin-bottom: 10px;">3D Interactive Globe</h3>
+            <p style="color: #999; max-width: 400px; margin: 0 auto;">Interactive 3D globe visualization would appear here with Mapbox integration.</p>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
     
     st.markdown('</div>', unsafe_allow_html=True)
     
-    # Analysis Results Section
-    if st.session_state.analysis_results:
-        st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
-        
-        st.markdown('<div class="compact-header"><h3>Analysis Results</h3><span class="status-badge">Complete</span></div>', unsafe_allow_html=True)
-        
-        results = st.session_state.analysis_results
-        
+    # Demo Results Section
+    if st.session_state.get("run_analysis", False):
         st.markdown('<div class="card">', unsafe_allow_html=True)
-        st.markdown('<div class="card-title"><div class="icon">📊</div><h3 style="margin: 0;">Summary Statistics</h3></div>', unsafe_allow_html=True)
+        st.markdown('<div class="card-title"><div class="icon">📊</div><h3 style="margin: 0;">Analysis Results (Demo)</h3></div>', unsafe_allow_html=True)
         
-        summary_data = []
-        for index, data in results.items():
-            if data['values']:
-                values = [v for v in data['values'] if v is not None]
-                if values:
-                    summary_data.append({
-                        'Index': index,
-                        'Mean': round(sum(values) / len(values), 4),
-                        'Min': round(min(values), 4),
-                        'Max': round(max(values), 4),
-                        'Count': len(values)
-                    })
+        # Create demo data
+        demo_data = {
+            "NDVI": {"mean": 0.65, "min": 0.42, "max": 0.89, "trend": "↗ Increasing"},
+            "EVI": {"mean": 0.52, "min": 0.38, "max": 0.71, "trend": "→ Stable"},
+            "NDWI": {"mean": 0.28, "min": 0.15, "max": 0.42, "trend": "↗ Increasing"}
+        }
         
-        if summary_data:
-            summary_df = pd.DataFrame(summary_data)
-            st.dataframe(summary_df, use_container_width=True, hide_index=True)
+        results_df = pd.DataFrame(demo_data).T
+        results_df = results_df.reset_index().rename(columns={"index": "Index"})
+        
+        st.dataframe(results_df, use_container_width=True, hide_index=True)
+        
         st.markdown('</div>', unsafe_allow_html=True)
 
 # Footer
-st.markdown("""
-<div class="section-divider"></div>
-<div style="text-align: center; color: #666666; font-size: 12px; padding: 20px 0;">
+st.markdown(f"""
+<div style="text-align: center; color: #666666; font-size: 12px; padding: 20px 0; margin-top: 30px; border-top: 1px solid #222;">
     <p style="margin: 5px 0;">KHISBA GIS - Interactive 3D Global Vegetation Analytics Platform</p>
-    <p style="margin: 5px 0;">Created by Taibi Farouk Djilali - Clean Green & Black Design</p>
+    <p style="margin: 5px 0;">Logged in as: {user_info.get('email', 'user@example.com')} | Session: {get_session_duration()}</p>
     <div style="display: flex; justify-content: center; gap: 10px; margin-top: 10px;">
-        <span class="status-badge">3D Mapbox</span>
-        <span class="status-badge">Earth Engine</span>
-        <span class="status-badge">Streamlit</span>
+        <span class="status-badge">Demo Mode</span>
+        <span class="status-badge">User: {get_user_display_name(user_info)}</span>
         <span class="status-badge">Google Auth</span>
     </div>
 </div>
