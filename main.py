@@ -379,15 +379,15 @@ if code and not st.session_state.google_credentials and google_config:
 
 # Show login page if not authenticated
 if not st.session_state.google_credentials:
+    # Clean login page - NO DEMO ACCESS
     st.markdown("""
     <div class="main-container">
         <div class="content-container" style="max-width: 500px; margin: 100px auto;">
             <div class="card">
-                <h1 style="text-align: center; margin-bottom: 10px;">🌍 KHISBA GIS</h1>
-                <p style="text-align: center; color: #999999; margin-bottom: 30px;">3D Global Vegetation Analytics</p>
-                
-                <div style="text-align: center; padding: 20px;">
-                    <p style="color: #00ff88; font-weight: 600; margin-bottom: 20px;">Sign in with Google to access the platform</p>
+                <div style="text-align: center; margin-bottom: 20px;">
+                    <h1 style="text-align: center; margin-bottom: 10px;">🌍 KHISBA GIS</h1>
+                    <p style="text-align: center; color: #999999; margin-bottom: 10px;">3D Global Vegetation Analytics</p>
+                    <p style="color: #00ff88; font-weight: 600;">Please sign in with Google to access the platform</p>
                 </div>
             </div>
         </div>
@@ -400,19 +400,11 @@ if not st.session_state.google_credentials:
             try:
                 flow = create_google_flow(google_config)
                 auth_url, _ = flow.authorization_url(prompt='consent')
-                st.link_button("🔓 Login with Google", auth_url, type="primary", use_container_width=True)
-                
-                st.markdown(f"""
-                <div class="card" style="margin-top: 20px;">
-                    <p style="text-align: center; color: #666666; font-size: 12px;">
-                        Configured redirect: <code>{google_config['redirect_uris'][0]}</code>
-                    </p>
-                </div>
-                """, unsafe_allow_html=True)
+                st.link_button("🔓 Sign in with Google", auth_url, type="primary", use_container_width=True)
             except Exception as e:
-                st.error(f"Error creating auth flow: {e}")
+                st.error(f"Error creating authentication flow: {e}")
         else:
-            st.error("Google OAuth configuration not found")
+            st.error("Google OAuth configuration not found. Please configure client_secret.json or Streamlit secrets.")
     
     st.stop()
 
