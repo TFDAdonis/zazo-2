@@ -14,7 +14,6 @@ import ee
 import traceback
 import google_auth_oauthlib.flow
 from googleapiclient.discovery import build
-import numpy as np
 
 # Page configuration - MUST be first Streamlit command
 st.set_page_config(
@@ -352,10 +351,6 @@ if 'selected_coordinates' not in st.session_state:
     st.session_state.selected_coordinates = None
 if 'selected_area_name' not in st.session_state:
     st.session_state.selected_area_name = None
-if 'vegetation_data' not in st.session_state:
-    st.session_state.vegetation_data = None
-if 'time_series_data' not in st.session_state:
-    st.session_state.time_series_data = None
 
 # ==================== GOOGLE AUTHENTICATION CHECK ====================
 
@@ -421,7 +416,51 @@ if not st.session_state.google_credentials:
     
     st.stop()
 
-# ==================== EARTH ENGINE HELPER FUNCTIONS ====================
+# ==================== MAIN APPLICATION (After Authentication) ====================
+
+# Get user info for display
+user_info = st.session_state.google_user_info
+
+# Main Dashboard Layout
+st.markdown(f"""
+<div class="compact-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+    <div>
+        <h1>🌍 KHISBA GIS</h1>
+        <p style="color: #999999; margin: 0; font-size: 14px;">Interactive 3D Global Vegetation Analytics</p>
+    </div>
+    <div style="display: flex; gap: 10px; align-items: center;">
+        <div class="user-badge">
+            <img src="{user_info.get('picture', '')}" alt="Profile">
+            <span>{user_info.get('name', 'User')}</span>
+        </div>
+        <span class="status-badge">Connected</span>
+        <span class="status-badge">3D Mapbox Globe</span>
+        <span class="status-badge">v2.0</span>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+# Logout button in sidebar
+with st.sidebar:
+    st.markdown(f"""
+    <div class="card">
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
+            <img src="{user_info.get('picture', '')}" style="width: 40px; height: 40px; border-radius: 50%;">
+            <div>
+                <p style="margin: 0; font-weight: 600; color: #fff;">{user_info.get('name', 'User')}</p>
+                <p style="margin: 0; font-size: 12px; color: #999;">{user_info.get('email', '')}</p>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    if st.button("🚪 Logout", type="secondary", use_container_width=True):
+        st.session_state.google_credentials = None
+        st.session_state.google_user_info = None
+        st.query_params.clear()
+        st.rerun()
+
+# ==================== HELPER FUNCTIONS FOR EARTH ENGINE ====================
 
 def get_admin_boundaries(level, country_code=None, admin1_code=None):
     """Get administrative boundaries from Earth Engine"""
@@ -488,366 +527,6 @@ def get_geometry_coordinates(geometry):
     except Exception as e:
         st.error(f"Error getting coordinates: {str(e)}")
         return {'center': [0, 20], 'bounds': None, 'zoom': 2}
-
-def get_satellite_collection(collection_name, start_date, end_date, geometry):
-    """Get satellite data collection based on selection"""
-    try:
-        if collection_name == "Sentinel-2":
-            collection = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED') \
-                .filterDate(start_date, end_date) \
-                .filterBounds(geometry) \
-                .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20))
-        
-        elif collection_name == "Landsat 8":
-            collection = ee.ImageCollection('LANDSAT/LC08/C02/T1_L2') \
-                .filterDate(start_date, end_date) \
-                .filterBounds(geometry) \
-                .filter(ee.Filter.lt('CLOUD_COVER', 20))
-        
-        elif collection_name == "MODIS":
-            collection = ee.ImageCollection('MODIS/061/MOD13Q1') \
-                .filterDate(start_date, end_date) \
-                .filterBounds(geometry)
-        
-        else:
-            collection = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED') \
-                .filterDate(start_date, end_date) \
-                .filterBounds(geometry) \
-                .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20))
-        
-        return collection
-    except Exception as e:
-        st.error(f"Error loading satellite collection: {str(e)}")
-        return None
-
-def calculate_ndvi(image):
-    """Calculate NDVI from satellite image"""
-    if 'B8' in image.bandNames().getInfo() and 'B4' in image.bandNames().getInfo():  # Sentinel-2
-        ndvi = image.normalizedDifference(['B8', 'B4']).rename('NDVI')
-    elif 'SR_B5' in image.bandNames().getInfo() and 'SR_B4' in image.bandNames().getInfo():  # Landsat 8
-        ndvi = image.normalizedDifference(['SR_B5', 'SR_B4']).rename('NDVI')
-    elif 'NDVI' in image.bandNames().getInfo():  # MODIS
-        ndvi = image.select('NDVI')
-    else:
-        ndvi = image.select([0]).multiply(0)  # Return empty if no bands found
-    return ndvi
-
-def calculate_evi(image):
-    """Calculate EVI from satellite image"""
-    try:
-        if 'B8' in image.bandNames().getInfo() and 'B4' in image.bandNames().getInfo() and 'B2' in image.bandNames().getInfo():  # Sentinel-2
-            evi = image.expression(
-                '2.5 * ((NIR - RED) / (NIR + 6 * RED - 7.5 * BLUE + 1))',
-                {
-                    'NIR': image.select('B8'),
-                    'RED': image.select('B4'),
-                    'BLUE': image.select('B2')
-                }
-            ).rename('EVI')
-        elif 'SR_B5' in image.bandNames().getInfo() and 'SR_B4' in image.bandNames().getInfo() and 'SR_B2' in image.bandNames().getInfo():  # Landsat 8
-            evi = image.expression(
-                '2.5 * ((NIR - RED) / (NIR + 6 * RED - 7.5 * BLUE + 1))',
-                {
-                    'NIR': image.select('SR_B5'),
-                    'RED': image.select('SR_B4'),
-                    'BLUE': image.select('SR_B2')
-                }
-            ).rename('EVI')
-        else:
-            evi = image.select([0]).multiply(0)  # Return empty if no bands found
-        return evi
-    except:
-        return None
-
-def calculate_savi(image, L=0.5):
-    """Calculate SAVI from satellite image"""
-    try:
-        if 'B8' in image.bandNames().getInfo() and 'B4' in image.bandNames().getInfo():  # Sentinel-2
-            savi = image.expression(
-                '((NIR - RED) / (NIR + RED + L)) * (1 + L)',
-                {
-                    'NIR': image.select('B8'),
-                    'RED': image.select('B4'),
-                    'L': L
-                }
-            ).rename('SAVI')
-        elif 'SR_B5' in image.bandNames().getInfo() and 'SR_B4' in image.bandNames().getInfo():  # Landsat 8
-            savi = image.expression(
-                '((NIR - RED) / (NIR + RED + L)) * (1 + L)',
-                {
-                    'NIR': image.select('SR_B5'),
-                    'RED': image.select('SR_B4'),
-                    'L': L
-                }
-            ).rename('SAVI')
-        else:
-            savi = image.select([0]).multiply(0)
-        return savi
-    except:
-        return None
-
-def calculate_ndwi(image):
-    """Calculate NDWI from satellite image"""
-    try:
-        if 'B8' in image.bandNames().getInfo() and 'B3' in image.bandNames().getInfo():  # Sentinel-2
-            ndwi = image.normalizedDifference(['B3', 'B8']).rename('NDWI')
-        elif 'SR_B3' in image.bandNames().getInfo() and 'SR_B5' in image.bandNames().getInfo():  # Landsat 8
-            ndwi = image.normalizedDifference(['SR_B3', 'SR_B5']).rename('NDWI')
-        else:
-            ndwi = image.select([0]).multiply(0)
-        return ndwi
-    except:
-        return None
-
-def analyze_vegetation(geometry, start_date, end_date, collection_name, indices):
-    """Perform vegetation analysis on selected area"""
-    try:
-        with st.spinner("Fetching satellite data..."):
-            # Get satellite collection
-            collection = get_satellite_collection(collection_name, start_date, end_date, geometry)
-            
-            if collection is None:
-                st.error("Failed to get satellite data")
-                return None
-            
-            # Get the number of images
-            count = collection.size().getInfo()
-            st.info(f"Found {count} images for the selected period")
-            
-            if count == 0:
-                st.warning("No satellite images found for the selected area and date range")
-                return None
-            
-            # Create composite
-            composite = collection.median().clip(geometry)
-            
-            # Calculate selected indices
-            results = {}
-            
-            if 'NDVI' in indices:
-                with st.spinner("Calculating NDVI..."):
-                    ndvi = calculate_ndvi(composite)
-                    ndvi_stats = ndvi.reduceRegion(
-                        reducer=ee.Reducer.mean(),
-                        geometry=geometry,
-                        scale=100,
-                        maxPixels=1e9
-                    )
-                    ndvi_mean = ndvi_stats.get('NDVI').getInfo()
-                    results['NDVI'] = {
-                        'value': ndvi_mean if ndvi_mean else 0,
-                        'description': 'Normalized Difference Vegetation Index',
-                        'range': '-1 to 1',
-                        'healthy_range': '0.3 to 0.8'
-                    }
-            
-            if 'EVI' in indices:
-                with st.spinner("Calculating EVI..."):
-                    evi = calculate_evi(composite)
-                    if evi:
-                        evi_stats = evi.reduceRegion(
-                            reducer=ee.Reducer.mean(),
-                            geometry=geometry,
-                            scale=100,
-                            maxPixels=1e9
-                        )
-                        evi_mean = evi_stats.get('EVI').getInfo()
-                        results['EVI'] = {
-                            'value': evi_mean if evi_mean else 0,
-                            'description': 'Enhanced Vegetation Index',
-                            'range': '-1 to 1',
-                            'healthy_range': '0.2 to 0.8'
-                        }
-            
-            if 'SAVI' in indices:
-                with st.spinner("Calculating SAVI..."):
-                    savi = calculate_savi(composite)
-                    if savi:
-                        savi_stats = savi.reduceRegion(
-                            reducer=ee.Reducer.mean(),
-                            geometry=geometry,
-                            scale=100,
-                            maxPixels=1e9
-                        )
-                        savi_mean = savi_stats.get('SAVI').getInfo()
-                        results['SAVI'] = {
-                            'value': savi_mean if savi_mean else 0,
-                            'description': 'Soil Adjusted Vegetation Index',
-                            'range': '-1 to 1',
-                            'healthy_range': '0.1 to 0.7'
-                        }
-            
-            if 'NDWI' in indices:
-                with st.spinner("Calculating NDWI..."):
-                    ndwi = calculate_ndwi(composite)
-                    if ndwi:
-                        ndwi_stats = ndwi.reduceRegion(
-                            reducer=ee.Reducer.mean(),
-                            geometry=geometry,
-                            scale=100,
-                            maxPixels=1e9
-                        )
-                        ndwi_mean = ndwi_stats.get('NDWI').getInfo()
-                        results['NDWI'] = {
-                            'value': ndwi_mean if ndwi_mean else 0,
-                            'description': 'Normalized Difference Water Index',
-                            'range': '-1 to 1',
-                            'healthy_range': '> 0.2 for water presence'
-                        }
-            
-            # Generate time series data
-            time_series_data = generate_time_series(collection, geometry, indices)
-            
-            return {
-                'results': results,
-                'time_series': time_series_data,
-                'composite_image': composite,
-                'image_count': count
-            }
-            
-    except Exception as e:
-        st.error(f"Error in vegetation analysis: {str(e)}")
-        traceback.print_exc()
-        return None
-
-def generate_time_series(collection, geometry, indices):
-    """Generate time series data for selected indices"""
-    try:
-        time_series = {}
-        
-        # Get image dates
-        dates = collection.aggregate_array('system:time_start').getInfo()
-        date_list = [datetime.fromtimestamp(date/1000) for date in dates]
-        
-        # Calculate NDVI time series
-        if 'NDVI' in indices:
-            ndvi_series = []
-            for i in range(min(10, len(date_list))):  # Limit to 10 points for performance
-                try:
-                    img = ee.Image(collection.toList(collection.size()).get(i))
-                    ndvi = calculate_ndvi(img)
-                    if ndvi:
-                        stats = ndvi.reduceRegion(
-                            reducer=ee.Reducer.mean(),
-                            geometry=geometry,
-                            scale=100,
-                            maxPixels=1e9
-                        )
-                        val = stats.get('NDVI').getInfo()
-                        ndvi_series.append({
-                            'date': date_list[i],
-                            'value': val if val else 0
-                        })
-                except:
-                    continue
-            
-            time_series['NDVI'] = ndvi_series
-        
-        return time_series
-        
-    except Exception as e:
-        st.error(f"Error generating time series: {str(e)}")
-        return {}
-
-def create_vegetation_map(composite_image, geometry, index='NDVI'):
-    """Create vegetation visualization map"""
-    try:
-        # Calculate the selected index
-        if index == 'NDVI':
-            vis_image = calculate_ndvi(composite_image)
-        elif index == 'EVI':
-            vis_image = calculate_evi(composite_image)
-        elif index == 'SAVI':
-            vis_image = calculate_savi(composite_image)
-        elif index == 'NDWI':
-            vis_image = calculate_ndwi(composite_image)
-        else:
-            vis_image = calculate_ndvi(composite_image)
-        
-        # Get visualization parameters
-        vis_params = {
-            'min': -1,
-            'max': 1,
-            'palette': ['red', 'yellow', 'green']
-        }
-        
-        # Get map center
-        coords_info = get_geometry_coordinates(geometry)
-        
-        # Create map
-        map_obj = folium.Map(location=coords_info['center'][::-1], zoom_start=coords_info['zoom'])
-        
-        # Add the image layer
-        map_id_dict = vis_image.getMapId(vis_params)
-        
-        folium.TileLayer(
-            tiles=map_id_dict['tile_fetcher'].url_format,
-            attr='Google Earth Engine',
-            overlay=True,
-            name=f'{index} Map'
-        ).add_to(map_obj)
-        
-        # Add geometry boundary
-        bounds = coords_info['bounds']
-        if bounds:
-            folium.Rectangle(
-                bounds=[[bounds[0][0], bounds[0][1]], [bounds[1][0], bounds[1][1]]],
-                color='#00ff88',
-                fill=False,
-                weight=3
-            ).add_to(map_obj)
-        
-        folium.LayerControl().add_to(map_obj)
-        
-        return map_obj
-        
-    except Exception as e:
-        st.error(f"Error creating vegetation map: {str(e)}")
-        return None
-
-# ==================== MAIN APPLICATION (After Authentication) ====================
-
-# Get user info for display
-user_info = st.session_state.google_user_info
-
-# Main Dashboard Layout
-st.markdown(f"""
-<div class="compact-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-    <div>
-        <h1>🌍 KHISBA GIS</h1>
-        <p style="color: #999999; margin: 0; font-size: 14px;">Interactive 3D Global Vegetation Analytics</p>
-    </div>
-    <div style="display: flex; gap: 10px; align-items: center;">
-        <div class="user-badge">
-            <img src="{user_info.get('picture', '')}" alt="Profile">
-            <span>{user_info.get('name', 'User')}</span>
-        </div>
-        <span class="status-badge">Connected</span>
-        <span class="status-badge">3D Mapbox Globe</span>
-        <span class="status-badge">v2.0</span>
-    </div>
-</div>
-""", unsafe_allow_html=True)
-
-# Logout button in sidebar
-with st.sidebar:
-    st.markdown(f"""
-    <div class="card">
-        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
-            <img src="{user_info.get('picture', '')}" style="width: 40px; height: 40px; border-radius: 50%;">
-            <div>
-                <p style="margin: 0; font-weight: 600; color: #fff;">{user_info.get('name', 'User')}</p>
-                <p style="margin: 0; font-size: 12px; color: #999;">{user_info.get('email', '')}</p>
-            </div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    if st.button("🚪 Logout", type="secondary", use_container_width=True):
-        st.session_state.google_credentials = None
-        st.session_state.google_user_info = None
-        st.query_params.clear()
-        st.rerun()
 
 # ==================== MAIN LAYOUT ====================
 
@@ -984,81 +663,14 @@ with col1:
         
         index_options = st.multiselect(
             "Vegetation Indices",
-            options=["NDVI", "EVI", "SAVI", "NDWI"],
+            options=["NDVI", "EVI", "SAVI", "NDWI", "LAI"],
             default=["NDVI"],
             help="Select vegetation indices to calculate",
             key="index_select"
         )
         
-        # Add analysis type selection
-        analysis_type = st.selectbox(
-            "Analysis Type",
-            options=["Single Date Analysis", "Time Series Analysis"],
-            index=0,
-            help="Choose analysis type",
-            key="analysis_type"
-        )
-        
         if st.button("🚀 Run Analysis", type="primary", use_container_width=True, key="run_analysis"):
-            if not index_options:
-                st.warning("Please select at least one vegetation index")
-            else:
-                with st.spinner("Running vegetation analysis..."):
-                    try:
-                        # Convert dates to strings
-                        start_str = start_date.strftime('%Y-%m-%d')
-                        end_str = end_date.strftime('%Y-%m-%d')
-                        
-                        # Perform analysis
-                        analysis_results = analyze_vegetation(
-                            st.session_state.selected_geometry,
-                            start_str,
-                            end_str,
-                            collection_choice,
-                            index_options
-                        )
-                        
-                        if analysis_results:
-                            st.session_state.vegetation_data = analysis_results
-                            st.session_state.analysis_results = analysis_results['results']
-                            st.session_state.time_series_data = analysis_results['time_series']
-                            st.success("Analysis completed successfully!")
-                        else:
-                            st.error("Analysis failed. Please try different parameters.")
-                            
-                    except Exception as e:
-                        st.error(f"Error during analysis: {str(e)}")
-        
-        # Add download button for results
-        if st.session_state.vegetation_data:
-            if st.button("📥 Download Results", type="secondary", use_container_width=True):
-                try:
-                    # Create results DataFrame
-                    results_list = []
-                    for index, data in st.session_state.analysis_results.items():
-                        results_list.append({
-                            'Index': index,
-                            'Value': round(data['value'], 4),
-                            'Description': data['description'],
-                            'Range': data['range'],
-                            'Healthy Range': data['healthy_range']
-                        })
-                    
-                    results_df = pd.DataFrame(results_list)
-                    
-                    # Convert to CSV
-                    csv = results_df.to_csv(index=False)
-                    
-                    # Create download button
-                    st.download_button(
-                        label="Download CSV",
-                        data=csv,
-                        file_name=f"vegetation_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                        mime="text/csv",
-                        use_container_width=True
-                    )
-                except Exception as e:
-                    st.error(f"Error creating download: {str(e)}")
+            st.info("Analysis feature - select indices and run vegetation analysis on the selected area.")
         
         st.markdown('</div>', unsafe_allow_html=True)
 
@@ -1246,156 +858,32 @@ with col2:
     st.markdown('</div>', unsafe_allow_html=True)
     
     # Analysis Results Section
-    if st.session_state.vegetation_data:
+    if st.session_state.analysis_results:
         st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
         
-        # Display analysis results
-        st.markdown('<div class="compact-header"><h3>Vegetation Analysis Results</h3><span class="status-badge">Complete</span></div>', unsafe_allow_html=True)
+        st.markdown('<div class="compact-header"><h3>Analysis Results</h3><span class="status-badge">Complete</span></div>', unsafe_allow_html=True)
         
-        # Results Cards
         results = st.session_state.analysis_results
-        if results:
-            cols = st.columns(len(results))
-            for idx, (index, data) in enumerate(results.items()):
-                with cols[idx]:
-                    value = data['value']
-                    
-                    # Determine color based on value
-                    if value < 0:
-                        color = "#ff4444"  # Red for negative
-                    elif value < 0.3:
-                        color = "#ffaa44"  # Orange for low
-                    elif value < 0.6:
-                        color = "#44ff88"  # Light green for moderate
-                    else:
-                        color = "#00ff88"  # Green for high
-                    
-                    st.markdown(f"""
-                    <div class="card" style="text-align: center;">
-                        <h4 style="margin: 0 0 10px 0; color: {color};">{index}</h4>
-                        <p style="font-size: 24px; font-weight: 600; margin: 0; color: {color};">{value:.4f}</p>
-                        <p style="font-size: 12px; color: #999999; margin: 5px 0 0 0;">{data['description']}</p>
-                        <p style="font-size: 10px; color: #666666; margin: 5px 0 0 0;">Range: {data['range']}</p>
-                        <p style="font-size: 10px; color: #666666; margin: 5px 0 0 0;">Healthy: {data['healthy_range']}</p>
-                    </div>
-                    """, unsafe_allow_html=True)
         
-        # Time Series Charts
-        if st.session_state.time_series_data and 'NDVI' in st.session_state.time_series_data:
-            st.markdown('<div class="card">', unsafe_allow_html=True)
-            st.markdown('<div class="card-title"><div class="icon">📈</div><h3 style="margin: 0;">NDVI Time Series</h3></div>', unsafe_allow_html=True)
-            
-            ts_data = st.session_state.time_series_data['NDVI']
-            if ts_data:
-                df = pd.DataFrame(ts_data)
-                df['date'] = pd.to_datetime(df['date'])
-                
-                fig = px.line(df, x='date', y='value', 
-                             title='NDVI Time Series',
-                             labels={'value': 'NDVI Value', 'date': 'Date'},
-                             color_discrete_sequence=['#00ff88'])
-                
-                fig.update_layout(
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    font_color='#ffffff',
-                    xaxis=dict(showgrid=True, gridcolor='#222222'),
-                    yaxis=dict(showgrid=True, gridcolor='#222222'),
-                    title_font_color='#00ff88'
-                )
-                
-                st.plotly_chart(fig, use_container_width=True)
-            st.markdown('</div>', unsafe_allow_html=True)
-        
-        # Vegetation Map
-        if 'composite_image' in st.session_state.vegetation_data:
-            st.markdown('<div class="card">', unsafe_allow_html=True)
-            st.markdown('<div class="card-title"><div class="icon">🗺️</div><h3 style="margin: 0;">Vegetation Index Map</h3></div>', unsafe_allow_html=True)
-            
-            map_index = st.selectbox(
-                "Select Index for Map",
-                options=list(results.keys()),
-                index=0,
-                help="Choose index to visualize on map"
-            )
-            
-            try:
-                vegetation_map = create_vegetation_map(
-                    st.session_state.vegetation_data['composite_image'],
-                    st.session_state.selected_geometry,
-                    map_index
-                )
-                
-                if vegetation_map:
-                    st_folium(vegetation_map, width=800, height=400)
-                else:
-                    st.info("Map visualization not available for this index")
-            except Exception as e:
-                st.error(f"Error displaying vegetation map: {str(e)}")
-            
-            st.markdown('</div>', unsafe_allow_html=True)
-        
-        # Detailed Statistics
         st.markdown('<div class="card">', unsafe_allow_html=True)
-        st.markdown('<div class="card-title"><div class="icon">📊</div><h3 style="margin: 0;">Detailed Statistics</h3></div>', unsafe_allow_html=True)
+        st.markdown('<div class="card-title"><div class="icon">📊</div><h3 style="margin: 0;">Summary Statistics</h3></div>', unsafe_allow_html=True)
         
-        stats_data = []
+        summary_data = []
         for index, data in results.items():
-            value = data['value']
-            
-            # Health assessment
-            if value < 0:
-                health_status = "Poor (Bare Soil/Water)"
-                health_color = "#ff4444"
-            elif value < 0.3:
-                health_status = "Low Vegetation"
-                health_color = "#ffaa44"
-            elif value < 0.6:
-                health_status = "Moderate Vegetation"
-                health_color = "#44ff88"
-            else:
-                health_status = "Healthy/Dense Vegetation"
-                health_color = "#00ff88"
-            
-            stats_data.append({
-                'Vegetation Index': index,
-                'Value': round(value, 4),
-                'Health Status': health_status,
-                'Description': data['description']
-            })
+            if data['values']:
+                values = [v for v in data['values'] if v is not None]
+                if values:
+                    summary_data.append({
+                        'Index': index,
+                        'Mean': round(sum(values) / len(values), 4),
+                        'Min': round(min(values), 4),
+                        'Max': round(max(values), 4),
+                        'Count': len(values)
+                    })
         
-        stats_df = pd.DataFrame(stats_data)
-        st.dataframe(stats_df, use_container_width=True, hide_index=True)
-        
-        st.markdown('</div>', unsafe_allow_html=True)
-        
-        # Interpretation Guide
-        st.markdown('<div class="card">', unsafe_allow_html=True)
-        st.markdown('<div class="card-title"><div class="icon">📖</div><h3 style="margin: 0;">Interpretation Guide</h3></div>', unsafe_allow_html=True)
-        
-        guide_data = {
-            "NDVI": {
-                "Negative values": "Water bodies, snow, ice, or clouds",
-                "0 to 0.2": "Bare soil, rocks, or urban areas",
-                "0.2 to 0.5": "Sparse vegetation, grasslands, or agricultural areas",
-                "0.5 to 0.8": "Moderate to dense vegetation",
-                "Above 0.8": "Very dense, healthy vegetation"
-            },
-            "EVI": {
-                "Negative to 0.2": "Bare soil or water",
-                "0.2 to 0.5": "Sparse vegetation",
-                "0.5 to 0.8": "Moderate to dense vegetation",
-                "Above 0.8": "Very dense vegetation"
-            }
-        }
-        
-        for index, ranges in guide_data.items():
-            if index in results:
-                st.markdown(f"**{index} Ranges:**")
-                for range_desc, meaning in ranges.items():
-                    st.markdown(f"- **{range_desc}**: {meaning}")
-                st.markdown("---")
-        
+        if summary_data:
+            summary_df = pd.DataFrame(summary_data)
+            st.dataframe(summary_df, use_container_width=True, hide_index=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
 # Footer
@@ -1409,7 +897,6 @@ st.markdown("""
         <span class="status-badge">Earth Engine</span>
         <span class="status-badge">Streamlit</span>
         <span class="status-badge">Google Auth</span>
-        <span class="status-badge">Real-time Analysis</span>
     </div>
 </div>
 """, unsafe_allow_html=True)
