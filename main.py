@@ -25,21 +25,51 @@ st.set_page_config(
 
 # ==================== GOOGLE OAUTH CONFIGURATION ====================
 
-# Load Google OAuth secrets
+# Load Google OAuth secrets from secrets.toml
 def load_google_config():
     try:
-        if "web" in st.secrets:
-            client_config = dict(st.secrets["web"])
-        elif os.path.exists("client_secret.json"):
-            with open("client_secret.json", "r") as f:
-                client_config = json.load(f)["web"]
-        else:
-            return None
-        return client_config
-    except Exception:
+        # Check if secrets are available in Streamlit secrets
+        if hasattr(st, 'secrets'):
+            # Try to get from [auth] section first
+            if "auth" in st.secrets:
+                auth_config = st.secrets["auth"]
+                client_config = {
+                    "web": {
+                        "client_id": auth_config.get("client_id", ""),
+                        "client_secret": auth_config.get("client_secret", ""),
+                        "redirect_uris": [auth_config.get("redirect_uri", "http://localhost:8501/oauth2callback")],
+                        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                        "token_uri": "https://oauth2.googleapis.com/token"
+                    }
+                }
+                return client_config["web"]
+            # Try to get from web section
+            elif "web" in st.secrets:
+                return st.secrets["web"]
+        
+        # Fallback to environment variables
+        import os
+        client_id = os.environ.get("GOOGLE_CLIENT_ID", "")
+        client_secret = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+        redirect_uri = os.environ.get("GOOGLE_REDIRECT_URI", "http://localhost:8501/oauth2callback")
+        
+        if client_id and client_secret:
+            return {
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "redirect_uris": [redirect_uri],
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token"
+            }
+        
+        # Last resort: check for client_secret.json file
         if os.path.exists("client_secret.json"):
             with open("client_secret.json", "r") as f:
                 return json.load(f)["web"]
+                
+        return None
+    except Exception as e:
+        st.error(f"Error loading Google config: {str(e)}")
         return None
 
 GOOGLE_SCOPES = [
@@ -49,13 +79,15 @@ GOOGLE_SCOPES = [
 ]
 
 def create_google_flow(client_config):
+    """Create Google OAuth flow"""
+    # Ensure redirect_uris is a list
     if "redirect_uris" in client_config and isinstance(client_config["redirect_uris"], str):
         client_config["redirect_uris"] = [client_config["redirect_uris"]]
     
     flow = google_auth_oauthlib.flow.Flow.from_client_config(
         {"web": client_config},
         scopes=GOOGLE_SCOPES,
-        redirect_uri=client_config["redirect_uris"][0]
+        redirect_uri=client_config["redirect_uris"][0] if client_config["redirect_uris"] else "http://localhost:8501/oauth2callback"
     )
     return flow
 
@@ -64,6 +96,8 @@ if "google_credentials" not in st.session_state:
     st.session_state.google_credentials = None
 if "google_user_info" not in st.session_state:
     st.session_state.google_user_info = None
+if "auth_code" not in st.session_state:
+    st.session_state.auth_code = None
 
 # ==================== CUSTOM CSS ====================
 
@@ -270,6 +304,21 @@ st.markdown("""
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
+    
+    /* Login page styling */
+    .login-container {
+        max-width: 500px;
+        margin: 100px auto;
+        text-align: center;
+    }
+    
+    .login-card {
+        background: var(--card-black);
+        border: 1px solid var(--border-gray);
+        border-radius: 10px;
+        padding: 40px 30px;
+        text-align: center;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -356,12 +405,19 @@ if 'selected_area_name' not in st.session_state:
 
 google_config = load_google_config()
 
+# Check if we're in the OAuth callback
+query_params = st.query_params.to_dict()
+code = query_params.get("code")
+state = query_params.get("state")
+
 # Handle OAuth callback
-code = st.query_params.get("code")
-if code and not st.session_state.google_credentials and google_config:
+if code and state and not st.session_state.google_credentials:
     with st.spinner("Authenticating with Google..."):
         try:
+            # Recreate the flow
             flow = create_google_flow(google_config)
+            
+            # Fetch token using the authorization code
             flow.fetch_token(code=code)
             credentials = flow.credentials
             st.session_state.google_credentials = credentials
@@ -371,24 +427,24 @@ if code and not st.session_state.google_credentials and google_config:
             user_info = service.userinfo().get().execute()
             st.session_state.google_user_info = user_info
             
+            # Clear query parameters
             st.query_params.clear()
             st.rerun()
+            
         except Exception as e:
-            st.error(f"Authentication failed: {e}")
+            st.error(f"Authentication failed: {str(e)}")
             st.query_params.clear()
 
 # Show login page if not authenticated
 if not st.session_state.google_credentials:
     st.markdown("""
-    <div class="main-container">
-        <div class="content-container" style="max-width: 500px; margin: 100px auto;">
-            <div class="card">
-                <h1 style="text-align: center; margin-bottom: 10px;">🌍 KHISBA GIS</h1>
-                <p style="text-align: center; color: #999999; margin-bottom: 30px;">3D Global Vegetation Analytics</p>
-                
-                <div style="text-align: center; padding: 20px;">
-                    <p style="color: #00ff88; font-weight: 600; margin-bottom: 20px;">Sign in with Google to access the platform</p>
-                </div>
+    <div class="login-container">
+        <div class="login-card">
+            <h1 style="text-align: center; margin-bottom: 10px;">🌍 KHISBA GIS</h1>
+            <p style="text-align: center; color: #999999; margin-bottom: 30px;">3D Global Vegetation Analytics</p>
+            
+            <div style="text-align: center; padding: 20px;">
+                <p style="color: #00ff88; font-weight: 600; margin-bottom: 20px;">Sign in with Google to access the platform</p>
             </div>
         </div>
     </div>
@@ -399,20 +455,73 @@ if not st.session_state.google_credentials:
         if google_config:
             try:
                 flow = create_google_flow(google_config)
-                auth_url, _ = flow.authorization_url(prompt='consent')
-                st.link_button("🔓 Login with Google", auth_url, type="primary", use_container_width=True)
+                auth_url, state = flow.authorization_url(
+                    access_type='offline',
+                    include_granted_scopes='true',
+                    prompt='consent'
+                )
+                
+                # Store state in session for verification
+                st.session_state.oauth_state = state
                 
                 st.markdown(f"""
-                <div class="card" style="margin-top: 20px;">
-                    <p style="text-align: center; color: #666666; font-size: 12px;">
-                        Configured redirect: <code>{google_config['redirect_uris'][0]}</code>
-                    </p>
-                </div>
+                <a href="{auth_url}" target="_self">
+                    <button style="
+                        width: 100%;
+                        background: linear-gradient(90deg, #00ff88, #00cc6a);
+                        color: #000000;
+                        border: none;
+                        padding: 15px 25px;
+                        border-radius: 8px;
+                        font-weight: 600;
+                        font-size: 16px;
+                        cursor: pointer;
+                        transition: all 0.3s ease;
+                        margin: 10px 0;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        gap: 10px;
+                    " onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 5px 15px rgba(0, 255, 136, 0.3)';" 
+                    onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none';">
+                        🔓 Login with Google
+                    </button>
+                </a>
                 """, unsafe_allow_html=True)
+                
+                # Debug info
+                with st.expander("Debug Info"):
+                    st.write("Google Config Loaded:", google_config is not None)
+                    if google_config:
+                        st.write("Client ID:", google_config.get('client_id', 'Not found')[:20] + "...")
+                        st.write("Redirect URI:", google_config.get('redirect_uris', ['Not found'])[0])
+                
             except Exception as e:
-                st.error(f"Error creating auth flow: {e}")
+                st.error(f"Error creating auth flow: {str(e)}")
+                st.write("Full error:", traceback.format_exc())
         else:
-            st.error("Google OAuth configuration not found")
+            st.error("⚠️ Google OAuth configuration not found")
+            st.markdown("""
+            <div class="card" style="margin-top: 20px;">
+                <h4>Configuration Options:</h4>
+                <ol style="text-align: left; color: #cccccc;">
+                    <li>Create a <code>.streamlit/secrets.toml</code> file with:</li>
+                    <pre style="background: #111111; padding: 10px; border-radius: 5px; overflow-x: auto;">
+[web]
+client_id = "your-client-id.apps.googleusercontent.com"
+client_secret = "your-client-secret"
+redirect_uris = ["http://localhost:8501/oauth2callback"]
+                    </pre>
+                    <li>Or set environment variables:
+                        <ul>
+                            <li><code>GOOGLE_CLIENT_ID</code></li>
+                            <li><code>GOOGLE_CLIENT_SECRET</code></li>
+                            <li><code>GOOGLE_REDIRECT_URI</code></li>
+                        </ul>
+                    </li>
+                </ol>
+            </div>
+            """, unsafe_allow_html=True)
     
     st.stop()
 
@@ -457,7 +566,6 @@ with st.sidebar:
     if st.button("🚪 Logout", type="secondary", use_container_width=True):
         st.session_state.google_credentials = None
         st.session_state.google_user_info = None
-        st.query_params.clear()
         st.rerun()
 
 # ==================== HELPER FUNCTIONS FOR EARTH ENGINE ====================
@@ -900,4 +1008,3 @@ st.markdown("""
     </div>
 </div>
 """, unsafe_allow_html=True)
- 
