@@ -1,6 +1,5 @@
 import streamlit as st
 import json
-import tempfile
 import os
 import pandas as pd
 import folium
@@ -12,10 +11,6 @@ from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
 import ee
 import traceback
-from google.oauth2 import id_token
-from google.auth.transport import requests
-import httpx
-from urllib.parse import urlencode
 
 # Page configuration - MUST be first Streamlit command
 st.set_page_config(
@@ -238,7 +233,7 @@ if 'user_info' not in st.session_state:
 if 'access_token' not in st.session_state:
     st.session_state.access_token = None
 
-# Simple demo authentication (replace with real OAuth in production)
+# Simple demo authentication
 def check_authentication():
     """Check if user is authenticated"""
     return st.session_state.user_info is not None
@@ -248,7 +243,7 @@ def get_user_info():
     return st.session_state.user_info
 
 def login_demo():
-    """Demo login function - replace with actual OAuth"""
+    """Demo login function"""
     st.session_state.user_info = {
         'name': 'Demo User',
         'email': 'demo@example.com',
