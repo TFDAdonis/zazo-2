@@ -14,7 +14,293 @@ import ee
 import traceback
 import google_auth_oauthlib.flow
 from googleapiclient.discovery import build
+import streamlit as st
+import requests
+import urllib.parse
+import pandas as pd
+import folium
+from streamlit_folium import st_folium
+import numpy as np
 
+# ===========================================
+# DEBUG MODE - Try both credentials
+# ===========================================
+DEBUG_MODE = True  # Set to True to see debug info
+
+# Try both sets of credentials
+CREDENTIAL_SETS = {
+    "new": {
+        "CLIENT_ID": "475971385635-l2kdjo14scnp1lllbmhegp2qj47e1q6m.apps.googleusercontent.com",
+        "CLIENT_SECRET": "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",
+        "REDIRECT_URI": "https://4uwduabizub3vubysxc8hz.streamlit.app/"
+    },
+    "old": {
+        "CLIENT_ID": "475971385635-hlvnhvp9sc7v1s2meu6htdnt8b5jbmbc.apps.googleusercontent.com",
+        "CLIENT_SECRET": "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",
+        "REDIRECT_URI": "http://localhost:8501"
+    }
+}
+
+# Select which credential set to use (try "new" first)
+SELECTED_CREDS = "new"
+CLIENT_ID = CREDENTIAL_SETS[SELECTED_CREDS]["CLIENT_ID"]
+CLIENT_SECRET = CREDENTIAL_SETS[SELECTED_CREDS]["CLIENT_SECRET"]
+REDIRECT_URI = CREDENTIAL_SETS[SELECTED_CREDS]["REDIRECT_URI"]
+
+# For local testing, you might need:
+# REDIRECT_URI = "http://localhost:8501"
+
+# Google OAuth endpoints
+AUTH_URL = "https://accounts.google.com/o/oauth2/auth"
+TOKEN_URL = "https://oauth2.googleapis.com/token"
+USERINFO_URL = "https://www.googleapis.com/oauth2/v1/userinfo"
+
+# Scopes - use minimum required scopes
+SCOPES = ["openid", "email", "profile"]
+
+st.set_page_config(page_title="Google Auth Debug", page_icon="🔍", layout="wide")
+
+# Display debug info
+if DEBUG_MODE:
+    st.sidebar.title("🔧 Debug Info")
+    st.sidebar.write(f"**Using Credentials:** {SELECTED_CREDS}")
+    st.sidebar.write(f"**Client ID:** {CLIENT_ID[:20]}...")
+    st.sidebar.write(f"**Redirect URI:** {REDIRECT_URI}")
+    
+    # Test redirect URI
+    if st.sidebar.button("Test Redirect URI"):
+        st.sidebar.info(f"Will redirect to: {REDIRECT_URI}")
+        
+    # Try different credential set
+    if st.sidebar.button("Switch to OLD credentials"):
+        st.session_state.clear()
+        st.query_params.clear()
+        st.rerun()
+
+st.title("🔐 Google Authentication Debug")
+
+def show_debug_info(auth_url):
+    """Show debug information about the auth URL"""
+    st.write("### 🔍 Debug Information")
+    
+    with st.expander("Click to see OAuth URL details"):
+        st.code(auth_url, language="text")
+        
+        # Parse the URL
+        parsed = urllib.parse.urlparse(auth_url)
+        params = urllib.parse.parse_qs(parsed.query)
+        
+        st.write("**URL Parameters:**")
+        for key, value in params.items():
+            st.write(f"- **{key}:** {value[0]}")
+        
+        st.write("---")
+        st.write("**Common 403 Error Causes:**")
+        st.error("""
+        1. ❌ OAuth consent screen not configured
+        2. ❌ App is in 'Testing' mode but user not added as test user
+        3. ❌ Wrong redirect URI
+        4. ❌ Client ID/Secret mismatch
+        5. ❌ Required scopes not enabled in Google Cloud Console
+        """)
+        
+        st.write("**Quick Fixes:**")
+        st.success("""
+        1. ✅ Go to Google Cloud Console → OAuth consent screen
+        2. ✅ Add your email as a 'Test User' 
+        3. ✅ Make sure redirect URI matches exactly
+        4. ✅ Check if app needs to be published
+        """)
+
+def create_auth_url():
+    """Create authorization URL with proper parameters"""
+    auth_params = {
+        'client_id': CLIENT_ID,
+        'redirect_uri': REDIRECT_URI,
+        'response_type': 'code',
+        'scope': ' '.join(SCOPES),
+        'access_type': 'offline',
+        'prompt': 'consent',  # Always ask for consent
+        'state': 'streamlit_auth',  # For security
+    }
+    
+    auth_url = f"{AUTH_URL}?{urllib.parse.urlencode(auth_params)}"
+    return auth_url
+
+def main():
+    # Initialize session state
+    if 'authenticated' not in st.session_state:
+        st.session_state.authenticated = False
+    if 'user_info' not in st.session_state:
+        st.session_state.user_info = None
+    
+    # Handle OAuth callback
+    query_params = st.query_params
+    
+    if 'code' in query_params:
+        st.write("### 🔄 Processing Authentication Callback")
+        
+        try:
+            code = query_params['code']
+            
+            # Exchange code for token
+            token_data = {
+                'code': code,
+                'client_id': CLIENT_ID,
+                'client_secret': CLIENT_SECRET,
+                'redirect_uri': REDIRECT_URI,
+                'grant_type': 'authorization_code'
+            }
+            
+            if DEBUG_MODE:
+                st.write("**Token Exchange Request:**")
+                st.json({k: v[:20] + "..." if isinstance(v, str) and len(v) > 20 else v 
+                        for k, v in token_data.items()})
+            
+            # Make token request
+            response = requests.post(TOKEN_URL, data=token_data)
+            
+            if DEBUG_MODE:
+                st.write(f"**Response Status:** {response.status_code}")
+            
+            if response.status_code == 200:
+                token_json = response.json()
+                access_token = token_json.get('access_token')
+                
+                # Get user info
+                headers = {'Authorization': f'Bearer {access_token}'}
+                user_response = requests.get(USERINFO_URL, headers=headers)
+                
+                if user_response.status_code == 200:
+                    user_info = user_response.json()
+                    
+                    st.session_state.authenticated = True
+                    st.session_state.user_info = user_info
+                    
+                    st.success("✅ Authentication successful!")
+                    st.query_params.clear()
+                    st.rerun()
+                else:
+                    st.error(f"Failed to get user info: {user_response.status_code}")
+            else:
+                st.error(f"Token exchange failed: {response.status_code}")
+                if DEBUG_MODE:
+                    st.write("**Response:**", response.text)
+                    
+        except Exception as e:
+            st.error(f"Error: {str(e)}")
+    
+    # Check if authenticated
+    if st.session_state.authenticated and st.session_state.user_info:
+        user_info = st.session_state.user_info
+        
+        st.success(f"✅ Welcome {user_info.get('name')}!")
+        st.write(f"**Email:** {user_info.get('email')}")
+        
+        if user_info.get('picture'):
+            st.image(user_info['picture'], width=100)
+        
+        if st.button("Logout"):
+            st.session_state.clear()
+            st.rerun()
+    
+    else:
+        # Not authenticated - show login
+        st.write("## 🚨 403 Error Troubleshooting")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.error("""
+            ### Common Causes of 403 Error:
+            
+            1. **App not published**
+               - Go to Google Cloud Console
+               - OAuth consent screen → Publish app
+            
+            2. **Not added as test user**
+               - If app is in testing
+               - Add your email to 'Test users'
+            
+            3. **Wrong redirect URI**
+               - Check in Google Cloud Console
+               - Must match exactly
+            
+            4. **Incorrect OAuth configuration**
+               - Verify all required fields are filled
+            """)
+        
+        with col2:
+            st.success("""
+            ### Quick Fixes:
+            
+            **Immediate Solution:**
+            1. Open [Google Cloud Console](https://console.cloud.google.com)
+            2. Go to **APIs & Services** → **OAuth consent screen**
+            3. Scroll to **Test users**
+            4. **Add your email address**
+            5. Click **Save**
+            6. Try logging in again
+            
+            **If still not working:**
+            1. Change app status to **"In production"**
+            2. Fill all required fields
+            3. Add proper support emails
+            """)
+        
+        st.divider()
+        
+        # Create and show auth URL
+        auth_url = create_auth_url()
+        
+        st.write("### Try Login Again")
+        st.markdown(f"""
+        <a href="{auth_url}" target="_self">
+            <button style="
+                background-color: #4285F4;
+                color: white;
+                padding: 15px 30px;
+                border: none;
+                border-radius: 5px;
+                font-size: 18px;
+                font-weight: bold;
+                cursor: pointer;
+                display: inline-flex;
+                align-items: center;
+                gap: 10px;
+            ">
+                <img src="https://www.google.com/favicon.ico" width="24" height="24">
+                Sign in with Google
+            </button>
+        </a>
+        """, unsafe_allow_html=True)
+        
+        if DEBUG_MODE:
+            show_debug_info(auth_url)
+            
+        # Direct troubleshooting steps
+        st.divider()
+        st.write("### 🔧 Direct Links to Fix Configuration:")
+        
+        col3, col4, col5 = st.columns(3)
+        
+        with col3:
+            st.markdown("""
+            [**OAuth Consent Screen**](https://console.cloud.google.com/apis/credentials/consent)
+            """)
+            
+        with col4:
+            st.markdown("""
+            [**Credentials Dashboard**](https://console.cloud.google.com/apis/credentials)
+            """)
+            
+        with col5:
+            st.markdown("""
+            [**Add Test Users**](https://console.cloud.google.com/apis/credentials/consent/edit)
+            """)
+
+if __name__ == "__main__":
+    main()
 
 # ==================== GOOGLE OAUTH CONFIGURATION ====================
 
