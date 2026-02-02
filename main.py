@@ -1,6 +1,5 @@
 import streamlit as st
 import json
-import tempfile
 import os
 import pandas as pd
 import folium
@@ -14,9 +13,6 @@ import ee
 import traceback
 import google_auth_oauthlib.flow
 from googleapiclient.discovery import build
-from google.oauth2.credentials import Credentials
-import base64
-import requests
 
 # Page configuration - MUST be first Streamlit command
 st.set_page_config(
@@ -26,7 +22,92 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
+# ==================== GOOGLE OAUTH CONFIGURATION ====================
+
+# Get current Streamlit Cloud URL dynamically
+def get_current_url():
+    """Get the current Streamlit Cloud URL"""
+    try:
+        # Get query parameters to check if we're in OAuth callback
+        query_params = st.query_params.to_dict()
+        
+        # Get current URL from Streamlit's internal config
+        # In Streamlit Cloud, we can get it from the environment
+        import os
+        streamlit_url = os.environ.get('STREAMLIT_SERVER_BASE_URL_PATH', '')
+        
+        if streamlit_url:
+            # Extract base URL
+            import re
+            match = re.search(r'https://[^/]+', streamlit_url)
+            if match:
+                return match.group(0)
+        
+        # Fallback: use the current host
+        import urllib.parse
+        current_url = st.secrets.get("_SERVER", {}).get("url", "")
+        if current_url:
+            return current_url
+            
+        # Last resort: check if we're in Streamlit Cloud
+        if "streamlit.app" in os.environ.get("STREAMLIT_SHARE", ""):
+            return "https://4uwduabizub3vubysxc8hz.streamlit.app"
+            
+        return "http://localhost:8501"
+    except:
+        return "https://4uwduabizub3vubysxc8hz.streamlit.app"
+
+# Get current URL
+CURRENT_URL = get_current_url()
+
+# Your Google OAuth credentials with dynamic redirect URI
+GOOGLE_CLIENT_CONFIG = {
+    "web": {
+        "client_id": "475971385635-l2kdjo14scnp1lllbmhegp2qj47e1q6m.apps.googleusercontent.com",
+        "project_id": "citric-hawk-457513-i6",
+        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+        "token_uri": "https://oauth2.googleapis.com/token",
+        "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+        "client_secret": "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",
+        "redirect_uris": [
+            "https://4uwduabizub3vubysxc8hz.streamlit.app",  # Primary URL
+            "https://4uwduabizub3vubysxc8hz.streamlit.app/",  # With trailing slash
+            f"{CURRENT_URL}",  # Dynamic URL
+            f"{CURRENT_URL}/",  # With trailing slash
+            "http://localhost:8501",  # For local development
+            "http://localhost:8501/"  # For local development with trailing slash
+        ]
+    }
+}
+
+GOOGLE_SCOPES = [
+    'https://www.googleapis.com/auth/userinfo.email', 
+    'https://www.googleapis.com/auth/userinfo.profile', 
+    'openid'
+]
+
+def create_google_flow(redirect_uri=None):
+    """Create Google OAuth flow with specified redirect URI"""
+    if redirect_uri is None:
+        redirect_uri = CURRENT_URL
+    
+    flow = google_auth_oauthlib.flow.Flow.from_client_config(
+        GOOGLE_CLIENT_CONFIG,
+        scopes=GOOGLE_SCOPES,
+        redirect_uri=redirect_uri
+    )
+    return flow
+
+# Initialize session state for Google auth
+if "google_credentials" not in st.session_state:
+    st.session_state.google_credentials = None
+if "google_user_info" not in st.session_state:
+    st.session_state.google_user_info = None
+
+# Rest of your CSS and Earth Engine initialization remains the same...
+
 # ==================== CUSTOM CSS ====================
+
 st.markdown("""
 <style>
     /* Base styling */
@@ -71,58 +152,32 @@ st.markdown("""
         margin-bottom: 0.5rem !important;
     }
     
-    /* Login container */
-    .login-container {
-        max-width: 400px;
-        margin: 100px auto;
-        padding: 40px 30px;
-        background: var(--card-black);
-        border: 1px solid var(--border-gray);
-        border-radius: 15px;
-        text-align: center;
+    h2 {
+        font-size: 1.5rem !important;
+        color: var(--primary-green) !important;
     }
     
-    .login-icon {
-        font-size: 3rem;
-        color: var(--primary-green);
-        margin-bottom: 20px;
+    h3 {
+        font-size: 1.25rem !important;
+        margin-bottom: 1rem !important;
     }
     
-    .login-btn {
+    /* Layout Container */
+    .main-container {
         display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 10px;
-        background: #4285F4;
-        color: white !important;
-        padding: 12px 24px;
-        border-radius: 8px;
-        font-weight: 600;
-        text-decoration: none;
-        border: none;
-        cursor: pointer;
-        transition: all 0.3s ease;
-        margin-top: 20px;
+        gap: 20px;
+        max-width: 1800px;
+        margin: 0 auto;
     }
     
-    .login-btn:hover {
-        background: #3367D6;
-        transform: translateY(-2px);
+    .sidebar-container {
+        width: 320px;
+        flex-shrink: 0;
     }
     
-    .login-btn img {
-        width: 20px;
-        height: 20px;
-    }
-    
-    /* Google icon container */
-    .google-icon-container {
-        background: white;
-        padding: 8px;
-        border-radius: 4px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
+    .content-container {
+        flex: 1;
+        min-width: 0;
     }
     
     /* Cards */
@@ -148,6 +203,18 @@ st.markdown("""
         border-bottom: 1px solid var(--border-gray);
     }
     
+    .card-title .icon {
+        width: 32px;
+        height: 32px;
+        background: rgba(0, 255, 136, 0.1);
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--primary-green);
+        font-size: 16px;
+    }
+    
     /* Buttons */
     .stButton > button {
         width: 100%;
@@ -168,6 +235,45 @@ st.markdown("""
         box-shadow: 0 5px 15px rgba(0, 255, 136, 0.3);
     }
     
+    /* Input fields */
+    .stTextInput > div > div > input,
+    .stSelectbox > div > div > select,
+    .stDateInput > div > div > input,
+    .stNumberInput > div > div > input,
+    .stTextArea > div > div > textarea {
+        background: var(--secondary-black) !important;
+        border: 1px solid var(--border-gray) !important;
+        color: var(--text-white) !important;
+        border-radius: 6px !important;
+        padding: 10px 12px !important;
+        font-size: 14px !important;
+    }
+    
+    .stTextInput > div > div > input:focus,
+    .stSelectbox > div > div > select:focus,
+    .stDateInput > div > div > input:focus {
+        border-color: var(--primary-green) !important;
+        box-shadow: 0 0 0 2px rgba(0, 255, 136, 0.2) !important;
+    }
+    
+    /* Map container */
+    .map-container {
+        border: 1px solid var(--border-gray);
+        border-radius: 10px;
+        overflow: hidden;
+        height: 600px;
+    }
+    
+    /* 3D Globe container */
+    .globe-container {
+        border: 1px solid var(--border-gray);
+        border-radius: 10px;
+        overflow: hidden;
+        height: 600px;
+        background: #000;
+        position: relative;
+    }
+    
     /* Status badges */
     .status-badge {
         display: inline-flex;
@@ -182,134 +288,78 @@ st.markdown("""
         letter-spacing: 0.5px;
     }
     
+    /* User info badge */
+    .user-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 12px;
+        background: rgba(0, 255, 136, 0.1);
+        border: 1px solid rgba(0, 255, 136, 0.3);
+        border-radius: 20px;
+        font-size: 12px;
+        color: var(--primary-green);
+    }
+    
+    .user-badge img {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+    }
+    
     /* Hide Streamlit default elements */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
     
-    /* Small auth container */
-    .auth-container {
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        z-index: 1000;
+    /* Login page styling */
+    .login-container {
+        max-width: 500px;
+        margin: 100px auto;
+        text-align: center;
     }
     
-    .user-avatar {
-        width: 40px;
-        height: 40px;
-        border-radius: 50%;
-        border: 2px solid var(--primary-green);
+    .login-card {
+        background: var(--card-black);
+        border: 1px solid var(--border-gray);
+        border-radius: 10px;
+        padding: 40px 30px;
+        text-align: center;
+    }
+    
+    .google-btn {
+        background: #4285F4 !important;
+        color: white !important;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 4px;
+        font-size: 16px;
+        font-weight: 500;
         cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        width: 100%;
+        margin: 20px 0;
+        transition: all 0.3s ease;
+    }
+    
+    .google-btn:hover {
+        background: #3367D6 !important;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(66, 133, 244, 0.3);
+    }
+    
+    .error-card {
+        background: rgba(255, 0, 0, 0.1);
+        border: 1px solid rgba(255, 0, 0, 0.3);
+        border-radius: 8px;
+        padding: 15px;
+        margin: 20px 0;
     }
 </style>
 """, unsafe_allow_html=True)
-
-# ==================== INLINE GOOGLE AUTH ====================
-
-def get_google_auth_url(client_config):
-    """Generate Google OAuth URL for inline authentication"""
-    flow = google_auth_oauthlib.flow.Flow.from_client_config(
-        client_config,
-        scopes=[
-            'https://www.googleapis.com/auth/userinfo.email',
-            'https://www.googleapis.com/auth/userinfo.profile',
-            'openid'
-        ],
-        redirect_uri='http://localhost:8501'  # Streamlit default
-    )
-    
-    auth_url, state = flow.authorization_url(
-        access_type='offline',
-        include_granted_scopes='true',
-        prompt='consent'
-    )
-    
-    return auth_url, state
-
-def get_google_user_info(access_token):
-    """Get user info from Google API"""
-    try:
-        response = requests.get(
-            'https://www.googleapis.com/oauth2/v3/userinfo',
-            headers={'Authorization': f'Bearer {access_token}'}
-        )
-        if response.status_code == 200:
-            return response.json()
-    except Exception as e:
-        st.error(f"Error fetching user info: {e}")
-    return None
-
-# Load Google config
-def load_google_config():
-    try:
-        # Try to load from Streamlit secrets
-        if "GOOGLE_CLIENT_ID" in st.secrets and "GOOGLE_CLIENT_SECRET" in st.secrets:
-            return {
-                "web": {
-                    "client_id": st.secrets["GOOGLE_CLIENT_ID"],
-                    "client_secret": st.secrets["GOOGLE_CLIENT_SECRET"],
-                    "redirect_uris": ["http://localhost:8501"],
-                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                    "token_uri": "https://oauth2.googleapis.com/token"
-                }
-            }
-        
-        # Try to load from file
-        if os.path.exists("client_secret.json"):
-            with open("client_secret.json", "r") as f:
-                return json.load(f)
-        
-        return None
-    except Exception as e:
-        st.error(f"Error loading Google config: {e}")
-        return None
-
-# Initialize session state
-if "google_auth_url" not in st.session_state:
-    st.session_state.google_auth_url = None
-if "google_auth_state" not in st.session_state:
-    st.session_state.google_auth_state = None
-if "google_user_info" not in st.session_state:
-    st.session_state.google_user_info = None
-if "access_token" not in st.session_state:
-    st.session_state.access_token = None
-
-# Load Google config
-google_config = load_google_config()
-
-# Handle OAuth callback from URL parameters
-query_params = st.query_params
-if "code" in query_params and "state" in query_params:
-    if not st.session_state.google_user_info:
-        try:
-            # Exchange authorization code for tokens
-            flow = google_auth_oauthlib.flow.Flow.from_client_config(
-                google_config,
-                scopes=[
-                    'https://www.googleapis.com/auth/userinfo.email',
-                    'https://www.googleapis.com/auth/userinfo.profile',
-                    'openid'
-                ],
-                state=query_params["state"]
-            )
-            flow.redirect_uri = 'http://localhost:8501'
-            
-            flow.fetch_token(code=query_params["code"])
-            credentials = flow.credentials
-            
-            # Get user info
-            st.session_state.access_token = credentials.token
-            user_info = get_google_user_info(credentials.token)
-            
-            if user_info:
-                st.session_state.google_user_info = user_info
-                # Clear URL parameters
-                st.query_params.clear()
-                st.rerun()
-                
-        except Exception as e:
-            st.error(f"Authentication error: {e}")
 
 # ==================== EARTH ENGINE INITIALIZATION ====================
 
@@ -368,7 +418,7 @@ e5aU1RW6tlG8nzHHwK2FeyI=
         st.error(f"Earth Engine auto-initialization failed: {str(e)}")
         return False
 
-# Initialize Earth Engine
+# Initialize Earth Engine on app start
 if 'ee_auto_initialized' not in st.session_state:
     with st.spinner("Initializing Earth Engine..."):
         if auto_initialize_earth_engine():
@@ -378,7 +428,7 @@ if 'ee_auto_initialized' not in st.session_state:
             st.session_state.ee_auto_initialized = False
             st.session_state.ee_initialized = False
 
-# Initialize session states
+# Initialize other session state
 if 'ee_initialized' not in st.session_state:
     st.session_state.ee_initialized = False
 if 'selected_geometry' not in st.session_state:
@@ -390,147 +440,139 @@ if 'selected_coordinates' not in st.session_state:
 if 'selected_area_name' not in st.session_state:
     st.session_state.selected_area_name = None
 
-# ==================== AUTHENTICATION CHECK ====================
+# ==================== GOOGLE AUTHENTICATION CHECK ====================
+
+# Handle OAuth callback - check for code in query parameters
+query_params = st.query_params.to_dict()
+code = query_params.get("code")
+
+if code and not st.session_state.google_credentials:
+    with st.spinner("Authenticating with Google..."):
+        try:
+            # Use the current URL as redirect URI
+            flow = create_google_flow(CURRENT_URL)
+            flow.fetch_token(code=code)
+            credentials = flow.credentials
+            st.session_state.google_credentials = credentials
+            
+            # Get user info
+            service = build('oauth2', 'v2', credentials=credentials)
+            user_info = service.userinfo().get().execute()
+            st.session_state.google_user_info = user_info
+            
+            # Clear query parameters
+            st.query_params.clear()
+            st.rerun()
+            
+        except Exception as e:
+            st.error(f"Authentication failed: {str(e)}")
+            st.write("Debug info:", traceback.format_exc())
+            # Don't clear query params on error so we can debug
 
 # Show login page if not authenticated
-if not st.session_state.google_user_info:
-    # Generate auth URL if not already generated
-    if google_config and not st.session_state.google_auth_url:
-        try:
-            auth_url, state = get_google_auth_url(google_config)
-            st.session_state.google_auth_url = auth_url
-            st.session_state.google_auth_state = state
-        except Exception as e:
-            st.error(f"Failed to generate auth URL: {e}")
-    
-    # Show login interface
-    st.markdown("""
-    <div style="height: 100vh; display: flex; align-items: center; justify-content: center;">
-        <div class="login-container">
-            <div class="login-icon">🌍</div>
-            <h1 style="text-align: center;">KHISBA GIS</h1>
-            <p style="color: #999999; margin-bottom: 30px; text-align: center;">3D Global Vegetation Analytics</p>
+if not st.session_state.google_credentials:
+    st.markdown(f"""
+    <div class="login-container">
+        <div class="login-card">
+            <h1 style="text-align: center; margin-bottom: 10px;">🌍 KHISBA GIS</h1>
+            <p style="text-align: center; color: #999999; margin-bottom: 30px;">3D Global Vegetation Analytics</p>
             
-            <div style="padding: 20px; border-radius: 10px; background: rgba(0, 255, 136, 0.05); border: 1px solid rgba(0, 255, 136, 0.2);">
-                <p style="color: #00ff88; font-weight: 600; margin-bottom: 15px;">Sign in to access the platform</p>
-            </div>
-            
-            <div style="margin-top: 30px;">
-    """, unsafe_allow_html=True)
-    
-    # Google Sign In Button
-    if st.session_state.google_auth_url:
-        # Create a form that redirects to the auth URL
-        st.markdown(f"""
-        <form action="{st.session_state.google_auth_url}" method="get">
-            <button type="submit" class="login-btn" style="width: 100%;">
-                <div class="google-icon-container">
-                    <svg width="18" height="18" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
-                        <path fill="#4285F4" d="M45.12 24.5c0-1.56-.14-3.06-.4-4.5H24v8.51h11.84c-.51 2.75-2.06 5.08-4.39 6.64v5.52h7.11c4.16-3.83 6.56-9.47 6.56-16.17z"/>
-                        <path fill="#34A853" d="M24 46c5.94 0 10.92-1.97 14.56-5.33l-7.11-5.52c-1.97 1.32-4.49 2.1-7.45 2.1-5.73 0-10.58-3.87-12.31-9.07H4.34v5.7C7.96 41.07 15.4 46 24 46z"/>
-                        <path fill="#FBBC05" d="M11.69 28.18C11.25 26.86 11 25.45 11 24s.25-2.86.69-4.18v-5.7H4.34C2.85 17.09 2 20.45 2 24c0 3.55.85 6.91 2.34 9.88l7.35-5.7z"/>
-                        <path fill="#EA4335" d="M24 10.75c3.24 0 6.13 1.11 8.41 3.29l6.31-6.31C34.91 4.18 29.93 2 24 2 15.4 2 7.96 6.93 4.34 14.12l7.35 5.7c1.73-5.2 6.58-9.07 12.31-9.07z"/>
-                    </svg>
-                </div>
-                <span>Continue with Google</span>
-            </button>
-        </form>
-        """, unsafe_allow_html=True)
-    else:
-        st.error("Google authentication not configured")
-    
-    st.markdown("""
-            </div>
-            
-            <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #222;">
-                <p style="color: #666; font-size: 12px; text-align: center;">
-                    After clicking, you'll be redirected back to this page automatically
-                </p>
+            <div style="text-align: center; padding: 20px;">
+                <p style="color: #00ff88; font-weight: 600; margin-bottom: 20px;">Sign in with Google to access the platform</p>
             </div>
         </div>
     </div>
     """, unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        try:
+            # Display current URL for debugging
+            st.markdown(f"""
+            <div class="card" style="margin-bottom: 20px;">
+                <h4 style="color: #00ff88;">🔧 Current Configuration</h4>
+                <p style="color: #cccccc; font-size: 12px; margin: 5px 0;">Detected URL: {CURRENT_URL}</p>
+                <p style="color: #cccccc; font-size: 12px; margin: 5px 0;">Client ID: {GOOGLE_CLIENT_CONFIG['web']['client_id'][:30]}...</p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Create auth flow with current URL
+            flow = create_google_flow(CURRENT_URL)
+            auth_url, state = flow.authorization_url(
+                access_type='offline',
+                include_granted_scopes='true',
+                prompt='consent'
+            )
+            
+            # Store state in session for verification
+            st.session_state.oauth_state = state
+            
+            # Create Google login button
+            st.markdown(f"""
+            <a href="{auth_url}" target="_self">
+                <button class="google-btn">
+                    <svg width="18" height="18" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+                        <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+                        <path fill="#4285F4" d="M46.5 24c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+                        <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+                        <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+                        <path fill="none" d="M0 0h48v48H0z"/>
+                    </svg>
+                    Sign in with Google
+                </button>
+            </a>
+            """, unsafe_allow_html=True)
+            
+            # Debug info
+            with st.expander("🔧 Debug Details"):
+                st.write("Current URL:", CURRENT_URL)
+                st.write("Redirect URIs configured:", GOOGLE_CLIENT_CONFIG["web"]["redirect_uris"])
+                st.write("Auth URL generated:", auth_url)
+                st.write("Query params:", query_params)
+                
+            # Instructions to fix Google OAuth console
+            with st.expander("⚠️ IMPORTANT: Fix Google OAuth Configuration"):
+                st.markdown("""
+                ### Add these Redirect URIs to your Google OAuth Console:
+                
+                1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+                2. Navigate to **APIs & Services** > **Credentials**
+                3. Click on your OAuth 2.0 Client ID
+                4. Under **Authorized redirect URIs**, ADD these:
+                
+                ```
+                https://4uwduabizub3vubysxc8hz.streamlit.app
+                https://4uwduabizub3vubysxc8hz.streamlit.app/
+                https://zazo-2-6kvuwllqjvqcgevjsxw9rv.streamlit.app
+                https://zazo-2-6kvuwllqjvqcgevjsxw9rv.streamlit.app/
+                ```
+                
+                5. Click **SAVE**
+                6. Wait 5-10 minutes for changes to propagate
+                
+                **Note:** Streamlit Cloud sometimes changes the app URL, so add all variations.
+                """)
+            
+        except Exception as e:
+            st.error(f"Error creating auth flow: {str(e)}")
+            st.write("Full error:", traceback.format_exc())
+            
+            # Show manual fix instructions
+            st.markdown("""
+            <div class="error-card">
+                <h4>🚨 Authentication Setup Required</h4>
+                <p>Please update your Google OAuth Console with these redirect URIs:</p>
+                <ol>
+                    <li><code>https://4uwduabizub3vubysxc8hz.streamlit.app</code></li>
+                    <li><code>https://4uwduabizub3vubysxc8hz.streamlit.app/</code></li>
+                    <li><code>https://zazo-2-6kvuwllqjvqcgevjsxw9rv.streamlit.app</code></li>
+                    <li><code>https://zazo-2-6kvuwllqjvqcgevjsxw9rv.streamlit.app/</code></li>
+                </ol>
+                <p><strong>Current URL detected:</strong> <code>{CURRENT_URL}</code></p>
+            </div>
+            """, unsafe_allow_html=True)
     
     st.stop()
 
 # ==================== MAIN APPLICATION (After Authentication) ====================
-
-# Get user info
-user_info = st.session_state.google_user_info
-
-# Small user info in top right
-st.markdown(f"""
-<div class="auth-container">
-    <div style="display: flex; align-items: center; gap: 10px; background: rgba(0,0,0,0.8); padding: 8px 15px; border-radius: 25px; border: 1px solid #222;">
-        <img src="{user_info.get('picture', '')}" class="user-avatar" onclick="document.getElementById('logout-modal').style.display='block'">
-        <div style="font-size: 12px;">
-            <div style="font-weight: 600;">{user_info.get('name', 'User')}</div>
-            <div style="color: #999; font-size: 10px;">{user_info.get('email', '')}</div>
-        </div>
-        <span class="status-badge" style="margin-left: 10px; font-size: 10px;">✓</span>
-    </div>
-</div>
-
-<div id="logout-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 2000; align-items: center; justify-content: center;">
-    <div style="background: #0a0a0a; border: 1px solid #222; border-radius: 10px; padding: 30px; width: 300px; text-align: center;">
-        <h3 style="color: #00ff88; margin-bottom: 20px;">Logout?</h3>
-        <p style="color: #999; margin-bottom: 30px;">Are you sure you want to sign out?</p>
-        <div style="display: flex; gap: 10px;">
-            <button onclick="document.getElementById('logout-modal').style.display='none'" style="flex: 1; background: #222; color: white; border: none; padding: 10px; border-radius: 5px; cursor: pointer;">Cancel</button>
-            <button onclick="window.location.href='?logout=true'" style="flex: 1; background: #00ff88; color: black; border: none; padding: 10px; border-radius: 5px; font-weight: 600; cursor: pointer;">Logout</button>
-        </div>
-    </div>
-</div>
-
-<script>
-// Close modal when clicking outside
-document.getElementById('logout-modal').addEventListener('click', function(e) {{
-    if (e.target.id === 'logout-modal') {{
-        document.getElementById('logout-modal').style.display = 'none';
-    }}
-}});
-</script>
-""", unsafe_allow_html=True)
-
-# Handle logout
-if "logout" in st.query_params:
-    st.session_state.google_user_info = None
-    st.session_state.google_auth_url = None
-    st.session_state.access_token = None
-    st.query_params.clear()
-    st.rerun()
-
-# Main Dashboard
-st.markdown(f"""
-<div class="compact-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; margin-top: 20px;">
-    <div>
-        <h1>🌍 KHISBA GIS</h1>
-        <p style="color: #999999; margin: 0; font-size: 14px;">Interactive 3D Global Vegetation Analytics</p>
-    </div>
-    <div style="display: flex; gap: 10px; align-items: center;">
-        <span class="status-badge">Connected</span>
-        <span class="status-badge">3D Mapbox Globe</span>
-        <span class="status-badge">v2.0</span>
-    </div>
-</div>
-""", unsafe_allow_html=True)
-
-# ==================== HELPER FUNCTIONS ====================
-# ... [Keep all your existing helper functions here] ...
-
-# ==================== MAIN LAYOUT ====================
-# ... [Keep all your existing main layout code here] ...
-
-# Footer
-st.markdown("""
-<div style="text-align: center; color: #666666; font-size: 12px; padding: 20px 0; margin-top: 50px;">
-    <p style="margin: 5px 0;">KHISBA GIS - Interactive 3D Global Vegetation Analytics Platform</p>
-    <p style="margin: 5px 0;">Created by Taibi Farouk Djilali - Clean Green & Black Design</p>
-    <div style="display: flex; justify-content: center; gap: 10px; margin-top: 10px;">
-        <span class="status-badge">3D Mapbox</span>
-        <span class="status-badge">Earth Engine</span>
-        <span class="status-badge">Streamlit</span>
-        <span class="status-badge">Inline Google Auth</span>
-    </div>
-</div>
-""", unsafe_allow_html=True)
+# ... [Rest of your main application code remains the same] ...
