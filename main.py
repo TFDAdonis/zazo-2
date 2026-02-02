@@ -12,6 +12,8 @@ from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
 import ee
 import traceback
+import google_auth_oauthlib.flow
+from googleapiclient.discovery import build
 
 # Page configuration - MUST be first Streamlit command
 st.set_page_config(
@@ -21,46 +23,47 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# ==================== AUTHENTICATION HELPER ====================
+# ==================== GOOGLE OAUTH CONFIGURATION ====================
 
-def check_auth():
-    """Check if user is authenticated using available methods"""
+# Load Google OAuth secrets
+def load_google_config():
     try:
-        # Try new Streamlit authentication API
-        if hasattr(st, 'user') and hasattr(st.user, 'is_logged_in'):
-            return st.user.is_logged_in
-        # Fallback: check session state
-        elif 'is_authenticated' in st.session_state:
-            return st.session_state.is_authenticated
-        # Fallback: check if auth secrets exist
-        elif 'auth' in st.secrets:
-            return True  # Assume authenticated if auth config exists
-        return False
-    except:
-        return False
+        if "web" in st.secrets:
+            client_config = dict(st.secrets["web"])
+        elif os.path.exists("client_secret.json"):
+            with open("client_secret.json", "r") as f:
+                client_config = json.load(f)["web"]
+        else:
+            return None
+        return client_config
+    except Exception:
+        if os.path.exists("client_secret.json"):
+            with open("client_secret.json", "r") as f:
+                return json.load(f)["web"]
+        return None
 
-def get_user_info():
-    """Get user information from available sources"""
-    try:
-        # Try to get from st.user
-        if hasattr(st, 'user'):
-            # Check if user object has attributes
-            user_dict = dict(st.user) if hasattr(st.user, '__dict__') else {}
-            if user_dict:
-                return {
-                    'name': user_dict.get('name', user_dict.get('email', 'User')),
-                    'email': user_dict.get('email', ''),
-                    'picture': user_dict.get('picture', '')
-                }
-        
-        # Fallback to session state
-        if 'user_info' in st.session_state:
-            return st.session_state.user_info
-        
-        # Default
-        return {'name': 'User', 'email': '', 'picture': ''}
-    except:
-        return {'name': 'User', 'email': '', 'picture': ''}
+GOOGLE_SCOPES = [
+    'https://www.googleapis.com/auth/userinfo.email', 
+    'https://www.googleapis.com/auth/userinfo.profile', 
+    'openid'
+]
+
+def create_google_flow(client_config):
+    if "redirect_uris" in client_config and isinstance(client_config["redirect_uris"], str):
+        client_config["redirect_uris"] = [client_config["redirect_uris"]]
+    
+    flow = google_auth_oauthlib.flow.Flow.from_client_config(
+        {"web": client_config},
+        scopes=GOOGLE_SCOPES,
+        redirect_uri=client_config["redirect_uris"][0]
+    )
+    return flow
+
+# Initialize session state for Google auth
+if "google_credentials" not in st.session_state:
+    st.session_state.google_credentials = None
+if "google_user_info" not in st.session_state:
+    st.session_state.google_user_info = None
 
 # ==================== CUSTOM CSS ====================
 
@@ -267,140 +270,8 @@ st.markdown("""
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
-    
-    /* Login page styling */
-    .login-container {
-        max-width: 400px;
-        margin: 100px auto;
-        text-align: center;
-    }
-    
-    .login-card {
-        background: var(--card-black);
-        border: 1px solid var(--border-gray);
-        border-radius: 12px;
-        padding: 40px 30px;
-    }
 </style>
 """, unsafe_allow_html=True)
-
-# ==================== AUTHENTICATION CHECK ====================
-
-# Check if authentication is configured
-auth_configured = 'auth' in st.secrets
-
-if not auth_configured:
-    # If no auth config, show warning but allow access (for development)
-    st.warning("⚠️ Authentication is not configured. Running in development mode.")
-    st.session_state.is_authenticated = True
-    st.session_state.user_info = {'name': 'Developer', 'email': 'dev@example.com', 'picture': ''}
-
-# Check if user is authenticated
-is_authenticated = check_auth()
-
-if not is_authenticated:
-    # Show login page
-    st.markdown("""
-    <div class="login-container">
-        <div class="login-card">
-            <h1 style="text-align: center; margin-bottom: 10px;">🌍 KHISBA GIS</h1>
-            <p style="text-align: center; color: #999999; margin-bottom: 30px;">3D Global Vegetation Analytics</p>
-            
-            <div style="margin-bottom: 30px;">
-                <p style="color: #00ff88; font-weight: 600; margin-bottom: 20px;">Sign in to access the platform</p>
-            </div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # Show login options based on configuration
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        if auth_configured:
-            # Check what type of auth configuration we have
-            auth_config = st.secrets["auth"]
-            
-            if all(key in auth_config for key in ["client_id", "client_secret", "server_metadata_url"]):
-                # Single provider
-                try:
-                    st.button("🔓 Login", on_click=st.login, use_container_width=True)
-                except:
-                    st.error("Login functionality not available. Please check Streamlit version.")
-            else:
-                # Multiple providers or custom config
-                providers = [key for key in auth_config.keys() if key not in ["redirect_uri", "cookie_secret"]]
-                
-                if "google" in providers:
-                    try:
-                        st.button("🔓 Login with Google", on_click=st.login, args=["google"], use_container_width=True)
-                    except:
-                        st.error("Google login not available. Please check configuration.")
-                
-                if "microsoft" in providers:
-                    try:
-                        st.button("🔓 Login with Microsoft", on_click=st.login, args=["microsoft"], use_container_width=True)
-                    except:
-                        st.error("Microsoft login not available. Please check configuration.")
-        else:
-            # Development mode - simulate login
-            if st.button("🔓 Enter App (Development Mode)", use_container_width=True):
-                st.session_state.is_authenticated = True
-                st.rerun()
-    
-    st.stop()
-
-# ==================== MAIN APPLICATION (After Authentication) ====================
-
-# Get user info
-user_info = get_user_info()
-
-# Main Dashboard Layout
-st.markdown(f"""
-<div class="compact-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-    <div>
-        <h1>🌍 KHISBA GIS</h1>
-        <p style="color: #999999; margin: 0; font-size: 14px;">Interactive 3D Global Vegetation Analytics</p>
-    </div>
-    <div style="display: flex; gap: 10px; align-items: center;">
-        <div class="user-badge">
-            <span>{user_info.get('name', 'User')}</span>
-        </div>
-        <span class="status-badge">Connected</span>
-        <span class="status-badge">3D Mapbox Globe</span>
-        <span class="status-badge">v2.0</span>
-    </div>
-</div>
-""", unsafe_allow_html=True)
-
-# Sidebar with user info and logout
-with st.sidebar:
-    st.markdown(f"""
-    <div class="card">
-        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
-            <div class="icon">👤</div>
-            <div>
-                <p style="margin: 0; font-weight: 600; color: #fff;">{user_info.get('name', 'User')}</p>
-                <p style="margin: 0; font-size: 12px; color: #999;">{user_info.get('email', '')}</p>
-            </div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # Logout button
-    if auth_configured:
-        try:
-            st.button("🚪 Logout", on_click=st.logout, type="secondary", use_container_width=True)
-        except:
-            if st.button("🚪 Exit App", type="secondary", use_container_width=True):
-                st.session_state.is_authenticated = False
-                st.rerun()
-    else:
-        if st.button("🚪 Exit App", type="secondary", use_container_width=True):
-            st.session_state.is_authenticated = False
-            st.rerun()
-
-# Continue with the rest of your application...
-# [Rest of your existing code continues from here...]
 
 # ==================== EARTH ENGINE INITIALIZATION ====================
 
@@ -412,7 +283,7 @@ def auto_initialize_earth_engine():
             "project_id": "citric-hawk-457513-i6",
             "private_key_id": "8984179a69969591194d8f8097e48cd9789f5ea2",
             "private_key": """-----BEGIN PRIVATE KEY-----
-MIIEvQIBADANBgkqhkiGw0BAQEFAASCBKcwggSjAgEAAoIBAQDFQOtXKWE+7mEY
+MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDFQOtXKWE+7mEY
 JUTNzx3h+QvvDCvZ2B6XZTofknuAFPW2LqAzZustznJJFkCmO3Nutct+W/iDQCG0
 1DjOQcbcr/jWr+mnRLVOkUkQc/kzZ8zaMQqU8HpXjS1mdhpsrbUaRKoEgfo3I3Bp
 dFcJ/caC7TSr8VkGnZcPEZyXVsj8dLSEzomdkX+mDlJlgCrNfu3Knu+If5lXh3Me
@@ -480,6 +351,114 @@ if 'selected_coordinates' not in st.session_state:
     st.session_state.selected_coordinates = None
 if 'selected_area_name' not in st.session_state:
     st.session_state.selected_area_name = None
+
+# ==================== GOOGLE AUTHENTICATION CHECK ====================
+
+google_config = load_google_config()
+
+# Handle OAuth callback
+code = st.query_params.get("code")
+if code and not st.session_state.google_credentials and google_config:
+    with st.spinner("Authenticating with Google..."):
+        try:
+            flow = create_google_flow(google_config)
+            flow.fetch_token(code=code)
+            credentials = flow.credentials
+            st.session_state.google_credentials = credentials
+            
+            # Get user info
+            service = build('oauth2', 'v2', credentials=credentials)
+            user_info = service.userinfo().get().execute()
+            st.session_state.google_user_info = user_info
+            
+            st.query_params.clear()
+            st.rerun()
+        except Exception as e:
+            st.error(f"Authentication failed: {e}")
+            st.query_params.clear()
+
+# Show login page if not authenticated
+if not st.session_state.google_credentials:
+    st.markdown("""
+    <div class="main-container">
+        <div class="content-container" style="max-width: 500px; margin: 100px auto;">
+            <div class="card">
+                <h1 style="text-align: center; margin-bottom: 10px;">🌍 KHISBA GIS</h1>
+                <p style="text-align: center; color: #999999; margin-bottom: 30px;">3D Global Vegetation Analytics</p>
+                
+                <div style="text-align: center; padding: 20px;">
+                    <p style="color: #00ff88; font-weight: 600; margin-bottom: 20px;">Sign in with Google to access the platform</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        if google_config:
+            try:
+                flow = create_google_flow(google_config)
+                auth_url, _ = flow.authorization_url(prompt='consent')
+                st.link_button("🔓 Login with Google", auth_url, type="primary", use_container_width=True)
+                
+                st.markdown(f"""
+                <div class="card" style="margin-top: 20px;">
+                    <p style="text-align: center; color: #666666; font-size: 12px;">
+                        Configured redirect: <code>{google_config['redirect_uris'][0]}</code>
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
+            except Exception as e:
+                st.error(f"Error creating auth flow: {e}")
+        else:
+            st.error("Google OAuth configuration not found")
+    
+    st.stop()
+
+# ==================== MAIN APPLICATION (After Authentication) ====================
+
+# Get user info for display
+user_info = st.session_state.google_user_info
+
+# Main Dashboard Layout
+st.markdown(f"""
+<div class="compact-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+    <div>
+        <h1>🌍 KHISBA GIS</h1>
+        <p style="color: #999999; margin: 0; font-size: 14px;">Interactive 3D Global Vegetation Analytics</p>
+    </div>
+    <div style="display: flex; gap: 10px; align-items: center;">
+        <div class="user-badge">
+            <img src="{user_info.get('picture', '')}" alt="Profile">
+            <span>{user_info.get('name', 'User')}</span>
+        </div>
+        <span class="status-badge">Connected</span>
+        <span class="status-badge">3D Mapbox Globe</span>
+        <span class="status-badge">v2.0</span>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+# Logout button in sidebar
+with st.sidebar:
+    st.markdown(f"""
+    <div class="card">
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
+            <img src="{user_info.get('picture', '')}" style="width: 40px; height: 40px; border-radius: 50%;">
+            <div>
+                <p style="margin: 0; font-weight: 600; color: #fff;">{user_info.get('name', 'User')}</p>
+                <p style="margin: 0; font-size: 12px; color: #999;">{user_info.get('email', '')}</p>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    if st.button("🚪 Logout", type="secondary", use_container_width=True):
+        st.session_state.google_credentials = None
+        st.session_state.google_user_info = None
+        st.query_params.clear()
+        st.rerun()
 
 # ==================== HELPER FUNCTIONS FOR EARTH ENGINE ====================
 
@@ -917,7 +896,7 @@ st.markdown("""
         <span class="status-badge">3D Mapbox</span>
         <span class="status-badge">Earth Engine</span>
         <span class="status-badge">Streamlit</span>
-        <span class="status-badge">OIDC Auth</span>
+        <span class="status-badge">Google Auth</span>
     </div>
 </div>
 """, unsafe_allow_html=True)
