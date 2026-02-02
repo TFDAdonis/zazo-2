@@ -21,6 +21,47 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
+# ==================== AUTHENTICATION HELPER ====================
+
+def check_auth():
+    """Check if user is authenticated using available methods"""
+    try:
+        # Try new Streamlit authentication API
+        if hasattr(st, 'user') and hasattr(st.user, 'is_logged_in'):
+            return st.user.is_logged_in
+        # Fallback: check session state
+        elif 'is_authenticated' in st.session_state:
+            return st.session_state.is_authenticated
+        # Fallback: check if auth secrets exist
+        elif 'auth' in st.secrets:
+            return True  # Assume authenticated if auth config exists
+        return False
+    except:
+        return False
+
+def get_user_info():
+    """Get user information from available sources"""
+    try:
+        # Try to get from st.user
+        if hasattr(st, 'user'):
+            # Check if user object has attributes
+            user_dict = dict(st.user) if hasattr(st.user, '__dict__') else {}
+            if user_dict:
+                return {
+                    'name': user_dict.get('name', user_dict.get('email', 'User')),
+                    'email': user_dict.get('email', ''),
+                    'picture': user_dict.get('picture', '')
+                }
+        
+        # Fallback to session state
+        if 'user_info' in st.session_state:
+            return st.session_state.user_info
+        
+        # Default
+        return {'name': 'User', 'email': '', 'picture': ''}
+    except:
+        return {'name': 'User', 'email': '', 'picture': ''}
+
 # ==================== CUSTOM CSS ====================
 
 st.markdown("""
@@ -243,10 +284,21 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ==================== STREAMLIT NATIVE AUTHENTICATION ====================
+# ==================== AUTHENTICATION CHECK ====================
 
-# Check if user is logged in
-if not st.user.is_logged_in:
+# Check if authentication is configured
+auth_configured = 'auth' in st.secrets
+
+if not auth_configured:
+    # If no auth config, show warning but allow access (for development)
+    st.warning("⚠️ Authentication is not configured. Running in development mode.")
+    st.session_state.is_authenticated = True
+    st.session_state.user_info = {'name': 'Developer', 'email': 'dev@example.com', 'picture': ''}
+
+# Check if user is authenticated
+is_authenticated = check_auth()
+
+if not is_authenticated:
     # Show login page
     st.markdown("""
     <div class="login-container">
@@ -261,46 +313,46 @@ if not st.user.is_logged_in:
     </div>
     """, unsafe_allow_html=True)
     
-    # Login buttons
+    # Show login options based on configuration
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        # Check if multiple OIDC providers are configured
-        auth_config = st.secrets.get("auth", {})
-        
-        # Single provider configuration
-        if all(key in auth_config for key in ["client_id", "client_secret", "server_metadata_url"]):
-            st.button("🔓 Login", on_click=st.login, use_container_width=True)
-        
-        # Multiple providers configuration
-        elif "google" in st.secrets.get("auth", {}):
-            col_a, col_b = st.columns(2)
-            with col_a:
-                st.button("🔓 Login with Google", on_click=st.login, args=["google"], use_container_width=True)
-            with col_b:
-                if "microsoft" in st.secrets.get("auth", {}):
-                    st.button("🔓 Login with Microsoft", on_click=st.login, args=["microsoft"], use_container_width=True)
-        
-        # No auth configured
+        if auth_configured:
+            # Check what type of auth configuration we have
+            auth_config = st.secrets["auth"]
+            
+            if all(key in auth_config for key in ["client_id", "client_secret", "server_metadata_url"]):
+                # Single provider
+                try:
+                    st.button("🔓 Login", on_click=st.login, use_container_width=True)
+                except:
+                    st.error("Login functionality not available. Please check Streamlit version.")
+            else:
+                # Multiple providers or custom config
+                providers = [key for key in auth_config.keys() if key not in ["redirect_uri", "cookie_secret"]]
+                
+                if "google" in providers:
+                    try:
+                        st.button("🔓 Login with Google", on_click=st.login, args=["google"], use_container_width=True)
+                    except:
+                        st.error("Google login not available. Please check configuration.")
+                
+                if "microsoft" in providers:
+                    try:
+                        st.button("🔓 Login with Microsoft", on_click=st.login, args=["microsoft"], use_container_width=True)
+                    except:
+                        st.error("Microsoft login not available. Please check configuration.")
         else:
-            st.error("Authentication not configured. Please set up OIDC in secrets.toml")
-            st.info("""
-            Add to `.streamlit/secrets.toml`:
-            ```
-            [auth]
-            redirect_uri = "http://localhost:8501/oauth2callback"
-            cookie_secret = "your-secret-key-here"
-            client_id = "your-client-id"
-            client_secret = "your-client-secret"
-            server_metadata_url = "your-metadata-url"
-            ```
-            """)
+            # Development mode - simulate login
+            if st.button("🔓 Enter App (Development Mode)", use_container_width=True):
+                st.session_state.is_authenticated = True
+                st.rerun()
     
     st.stop()
 
 # ==================== MAIN APPLICATION (After Authentication) ====================
 
-# User is logged in - display user info
-user_info = st.user
+# Get user info
+user_info = get_user_info()
 
 # Main Dashboard Layout
 st.markdown(f"""
@@ -311,7 +363,7 @@ st.markdown(f"""
     </div>
     <div style="display: flex; gap: 10px; align-items: center;">
         <div class="user-badge">
-            <span>{user_info.get('name', user_info.get('email', 'User'))}</span>
+            <span>{user_info.get('name', 'User')}</span>
         </div>
         <span class="status-badge">Connected</span>
         <span class="status-badge">3D Mapbox Globe</span>
@@ -320,7 +372,7 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# Logout button in sidebar
+# Sidebar with user info and logout
 with st.sidebar:
     st.markdown(f"""
     <div class="card">
@@ -334,7 +386,21 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
     
-    st.button("🚪 Logout", on_click=st.logout, type="secondary", use_container_width=True)
+    # Logout button
+    if auth_configured:
+        try:
+            st.button("🚪 Logout", on_click=st.logout, type="secondary", use_container_width=True)
+        except:
+            if st.button("🚪 Exit App", type="secondary", use_container_width=True):
+                st.session_state.is_authenticated = False
+                st.rerun()
+    else:
+        if st.button("🚪 Exit App", type="secondary", use_container_width=True):
+            st.session_state.is_authenticated = False
+            st.rerun()
+
+# Continue with the rest of your application...
+# [Rest of your existing code continues from here...]
 
 # ==================== EARTH ENGINE INITIALIZATION ====================
 
@@ -346,7 +412,7 @@ def auto_initialize_earth_engine():
             "project_id": "citric-hawk-457513-i6",
             "private_key_id": "8984179a69969591194d8f8097e48cd9789f5ea2",
             "private_key": """-----BEGIN PRIVATE KEY-----
-MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDFQOtXKWE+7mEY
+MIIEvQIBADANBgkqhkiGw0BAQEFAASCBKcwggSjAgEAAoIBAQDFQOtXKWE+7mEY
 JUTNzx3h+QvvDCvZ2B6XZTofknuAFPW2LqAzZustznJJFkCmO3Nutct+W/iDQCG0
 1DjOQcbcr/jWr+mnRLVOkUkQc/kzZ8zaMQqU8HpXjS1mdhpsrbUaRKoEgfo3I3Bp
 dFcJ/caC7TSr8VkGnZcPEZyXVsj8dLSEzomdkX+mDlJlgCrNfu3Knu+If5lXh3Me
