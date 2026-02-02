@@ -1,5 +1,6 @@
 import streamlit as st
 import json
+import tempfile
 import os
 import pandas as pd
 import folium
@@ -24,18 +25,22 @@ st.set_page_config(
 
 # ==================== GOOGLE OAUTH CONFIGURATION ====================
 
-# Your Google OAuth credentials
-GOOGLE_CLIENT_CONFIG = {
-    "web": {
-        "client_id": "475971385635-l2kdjo14scnp1lllbmhegp2qj47e1q6m.apps.googleusercontent.com",
-        "project_id": "citric-hawk-457513-i6",
-        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-        "token_uri": "https://oauth2.googleapis.com/token",
-        "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-        "client_secret": "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",
-        "redirect_uris": ["https://4uwduabizub3vubysxc8hz.streamlit.app/"]
-    }
-}
+# Load Google OAuth secrets
+def load_google_config():
+    try:
+        if "web" in st.secrets:
+            client_config = dict(st.secrets["web"])
+        elif os.path.exists("client_secret.json"):
+            with open("client_secret.json", "r") as f:
+                client_config = json.load(f)["web"]
+        else:
+            return None
+        return client_config
+    except Exception:
+        if os.path.exists("client_secret.json"):
+            with open("client_secret.json", "r") as f:
+                return json.load(f)["web"]
+        return None
 
 GOOGLE_SCOPES = [
     'https://www.googleapis.com/auth/userinfo.email', 
@@ -43,12 +48,14 @@ GOOGLE_SCOPES = [
     'openid'
 ]
 
-def create_google_flow():
-    """Create Google OAuth flow"""
+def create_google_flow(client_config):
+    if "redirect_uris" in client_config and isinstance(client_config["redirect_uris"], str):
+        client_config["redirect_uris"] = [client_config["redirect_uris"]]
+    
     flow = google_auth_oauthlib.flow.Flow.from_client_config(
-        GOOGLE_CLIENT_CONFIG,
+        {"web": client_config},
         scopes=GOOGLE_SCOPES,
-        redirect_uri=GOOGLE_CLIENT_CONFIG["web"]["redirect_uris"][0]
+        redirect_uri=client_config["redirect_uris"][0]
     )
     return flow
 
@@ -263,45 +270,6 @@ st.markdown("""
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
-    
-    /* Login page styling */
-    .login-container {
-        max-width: 500px;
-        margin: 100px auto;
-        text-align: center;
-    }
-    
-    .login-card {
-        background: var(--card-black);
-        border: 1px solid var(--border-gray);
-        border-radius: 10px;
-        padding: 40px 30px;
-        text-align: center;
-    }
-    
-    .google-btn {
-        background: #4285F4 !important;
-        color: white !important;
-        border: none;
-        padding: 12px 24px;
-        border-radius: 4px;
-        font-size: 16px;
-        font-weight: 500;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 12px;
-        width: 100%;
-        margin: 20px 0;
-        transition: all 0.3s ease;
-    }
-    
-    .google-btn:hover {
-        background: #3367D6 !important;
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(66, 133, 244, 0.3);
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -386,14 +354,14 @@ if 'selected_area_name' not in st.session_state:
 
 # ==================== GOOGLE AUTHENTICATION CHECK ====================
 
-# Handle OAuth callback - check for code in query parameters
-query_params = st.query_params.to_dict()
-code = query_params.get("code")
+google_config = load_google_config()
 
-if code and not st.session_state.google_credentials:
+# Handle OAuth callback
+code = st.query_params.get("code")
+if code and not st.session_state.google_credentials and google_config:
     with st.spinner("Authenticating with Google..."):
         try:
-            flow = create_google_flow()
+            flow = create_google_flow(google_config)
             flow.fetch_token(code=code)
             credentials = flow.credentials
             st.session_state.google_credentials = credentials
@@ -403,25 +371,24 @@ if code and not st.session_state.google_credentials:
             user_info = service.userinfo().get().execute()
             st.session_state.google_user_info = user_info
             
-            # Clear query parameters
             st.query_params.clear()
             st.rerun()
-            
         except Exception as e:
-            st.error(f"Authentication failed: {str(e)}")
-            st.write("Debug info:", traceback.format_exc())
+            st.error(f"Authentication failed: {e}")
             st.query_params.clear()
 
 # Show login page if not authenticated
 if not st.session_state.google_credentials:
     st.markdown("""
-    <div class="login-container">
-        <div class="login-card">
-            <h1 style="text-align: center; margin-bottom: 10px;">🌍 KHISBA GIS</h1>
-            <p style="text-align: center; color: #999999; margin-bottom: 30px;">3D Global Vegetation Analytics</p>
-            
-            <div style="text-align: center; padding: 20px;">
-                <p style="color: #00ff88; font-weight: 600; margin-bottom: 20px;">Sign in with Google to access the platform</p>
+    <div class="main-container">
+        <div class="content-container" style="max-width: 500px; margin: 100px auto;">
+            <div class="card">
+                <h1 style="text-align: center; margin-bottom: 10px;">🌍 KHISBA GIS</h1>
+                <p style="text-align: center; color: #999999; margin-bottom: 30px;">3D Global Vegetation Analytics</p>
+                
+                <div style="text-align: center; padding: 20px;">
+                    <p style="color: #00ff88; font-weight: 600; margin-bottom: 20px;">Sign in with Google to access the platform</p>
+                </div>
             </div>
         </div>
     </div>
@@ -429,43 +396,23 @@ if not st.session_state.google_credentials:
     
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        try:
-            flow = create_google_flow()
-            auth_url, state = flow.authorization_url(
-                access_type='offline',
-                include_granted_scopes='true',
-                prompt='consent'
-            )
-            
-            # Store state in session for verification
-            st.session_state.oauth_state = state
-            
-            # Create Google login button
-            st.markdown(f"""
-            <a href="{auth_url}" target="_self">
-                <button class="google-btn">
-                    <svg width="18" height="18" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
-                        <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
-                        <path fill="#4285F4" d="M46.5 24c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
-                        <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
-                        <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
-                        <path fill="none" d="M0 0h48v48H0z"/>
-                    </svg>
-                    Sign in with Google
-                </button>
-            </a>
-            """, unsafe_allow_html=True)
-            
-            # Debug info
-            with st.expander("🔧 Configuration Details"):
-                st.write("Client ID:", GOOGLE_CLIENT_CONFIG["web"]["client_id"])
-                st.write("Project ID:", GOOGLE_CLIENT_CONFIG["web"]["project_id"])
-                st.write("Redirect URI:", GOOGLE_CLIENT_CONFIG["web"]["redirect_uris"][0])
-                st.write("Auth URL:", auth_url)
-            
-        except Exception as e:
-            st.error(f"Error creating auth flow: {str(e)}")
-            st.write("Full error:", traceback.format_exc())
+        if google_config:
+            try:
+                flow = create_google_flow(google_config)
+                auth_url, _ = flow.authorization_url(prompt='consent')
+                st.link_button("🔓 Login with Google", auth_url, type="primary", use_container_width=True)
+                
+                st.markdown(f"""
+                <div class="card" style="margin-top: 20px;">
+                    <p style="text-align: center; color: #666666; font-size: 12px;">
+                        Configured redirect: <code>{google_config['redirect_uris'][0]}</code>
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
+            except Exception as e:
+                st.error(f"Error creating auth flow: {e}")
+        else:
+            st.error("Google OAuth configuration not found")
     
     st.stop()
 
@@ -510,6 +457,7 @@ with st.sidebar:
     if st.button("🚪 Logout", type="secondary", use_container_width=True):
         st.session_state.google_credentials = None
         st.session_state.google_user_info = None
+        st.query_params.clear()
         st.rerun()
 
 # ==================== HELPER FUNCTIONS FOR EARTH ENGINE ====================
@@ -952,3 +900,4 @@ st.markdown("""
     </div>
 </div>
 """, unsafe_allow_html=True)
+ 
