@@ -12,8 +12,6 @@ from plotly.subplots import make_subplots
 from datetime import datetime, timedelta
 import ee
 import traceback
-import google_auth_oauthlib.flow
-from googleapiclient.discovery import build
 
 # Page configuration - MUST be first Streamlit command
 st.set_page_config(
@@ -22,48 +20,6 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed"
 )
-
-# ==================== GOOGLE OAUTH CONFIGURATION ====================
-
-# Load Google OAuth secrets
-def load_google_config():
-    try:
-        if "web" in st.secrets:
-            client_config = dict(st.secrets["web"])
-        elif os.path.exists("client_secret.json"):
-            with open("client_secret.json", "r") as f:
-                client_config = json.load(f)["web"]
-        else:
-            return None
-        return client_config
-    except Exception:
-        if os.path.exists("client_secret.json"):
-            with open("client_secret.json", "r") as f:
-                return json.load(f)["web"]
-        return None
-
-GOOGLE_SCOPES = [
-    'https://www.googleapis.com/auth/userinfo.email', 
-    'https://www.googleapis.com/auth/userinfo.profile', 
-    'openid'
-]
-
-def create_google_flow(client_config):
-    if "redirect_uris" in client_config and isinstance(client_config["redirect_uris"], str):
-        client_config["redirect_uris"] = [client_config["redirect_uris"]]
-    
-    flow = google_auth_oauthlib.flow.Flow.from_client_config(
-        {"web": client_config},
-        scopes=GOOGLE_SCOPES,
-        redirect_uri=client_config["redirect_uris"][0]
-    )
-    return flow
-
-# Initialize session state for Google auth
-if "google_credentials" not in st.session_state:
-    st.session_state.google_credentials = None
-if "google_user_info" not in st.session_state:
-    st.session_state.google_user_info = None
 
 # ==================== CUSTOM CSS ====================
 
@@ -270,8 +226,58 @@ st.markdown("""
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
+    
+    /* Login page styling */
+    .login-container {
+        max-width: 400px;
+        margin: 100px auto;
+        text-align: center;
+    }
+    
+    .login-card {
+        background: var(--card-black);
+        border: 1px solid var(--border-gray);
+        border-radius: 10px;
+        padding: 40px 30px;
+        text-align: center;
+    }
 </style>
 """, unsafe_allow_html=True)
+
+# ==================== STREAMLIT BUILT-IN AUTHENTICATION ====================
+
+# Check if user is logged in using Streamlit's built-in auth
+def check_authentication():
+    """Check if user is authenticated using Streamlit's built-in auth"""
+    try:
+        # Check if experimental_user is available (Streamlit 1.42+)
+        if hasattr(st, 'experimental_user'):
+            return st.experimental_user.is_logged_in
+        return False
+    except:
+        return False
+
+# Get user info from Streamlit auth
+def get_user_info():
+    """Get user information from Streamlit authentication"""
+    if check_authentication() and hasattr(st, 'experimental_user'):
+        user_data = {}
+        # Get all available user info
+        if hasattr(st.experimental_user, 'to_dict'):
+            user_data = st.experimental_user.to_dict()
+        else:
+            # Fallback: manually extract available attributes
+            user_data = {
+                'name': getattr(st.experimental_user, 'name', 'User'),
+                'email': getattr(st.experimental_user, 'email', ''),
+                'picture': getattr(st.experimental_user, 'picture', ''),
+                'given_name': getattr(st.experimental_user, 'given_name', ''),
+                'family_name': getattr(st.experimental_user, 'family_name', ''),
+                'email_verified': getattr(st.experimental_user, 'email_verified', False),
+                'sub': getattr(st.experimental_user, 'sub', ''),
+            }
+        return user_data
+    return None
 
 # ==================== EARTH ENGINE INITIALIZATION ====================
 
@@ -352,43 +358,19 @@ if 'selected_coordinates' not in st.session_state:
 if 'selected_area_name' not in st.session_state:
     st.session_state.selected_area_name = None
 
-# ==================== GOOGLE AUTHENTICATION CHECK ====================
+# ==================== AUTHENTICATION CHECK ====================
 
-google_config = load_google_config()
-
-# Handle OAuth callback
-code = st.query_params.get("code")
-if code and not st.session_state.google_credentials and google_config:
-    with st.spinner("Authenticating with Google..."):
-        try:
-            flow = create_google_flow(google_config)
-            flow.fetch_token(code=code)
-            credentials = flow.credentials
-            st.session_state.google_credentials = credentials
-            
-            # Get user info
-            service = build('oauth2', 'v2', credentials=credentials)
-            user_info = service.userinfo().get().execute()
-            st.session_state.google_user_info = user_info
-            
-            st.query_params.clear()
-            st.rerun()
-        except Exception as e:
-            st.error(f"Authentication failed: {e}")
-            st.query_params.clear()
-
-# Show login page if not authenticated
-if not st.session_state.google_credentials:
+# Check if user is authenticated
+if not check_authentication():
+    # Show login page
     st.markdown("""
-    <div class="main-container">
-        <div class="content-container" style="max-width: 500px; margin: 100px auto;">
-            <div class="card">
-                <h1 style="text-align: center; margin-bottom: 10px;">🌍 KHISBA GIS</h1>
-                <p style="text-align: center; color: #999999; margin-bottom: 30px;">3D Global Vegetation Analytics</p>
-                
-                <div style="text-align: center; padding: 20px;">
-                    <p style="color: #00ff88; font-weight: 600; margin-bottom: 20px;">Sign in with Google to access the platform</p>
-                </div>
+    <div class="login-container">
+        <div class="login-card">
+            <h1 style="text-align: center; margin-bottom: 10px;">🌍 KHISBA GIS</h1>
+            <p style="text-align: center; color: #999999; margin-bottom: 30px;">3D Global Vegetation Analytics</p>
+            
+            <div style="text-align: center; padding: 20px;">
+                <p style="color: #00ff88; font-weight: 600; margin-bottom: 20px;">Sign in to access the platform</p>
             </div>
         </div>
     </div>
@@ -396,30 +378,16 @@ if not st.session_state.google_credentials:
     
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        if google_config:
-            try:
-                flow = create_google_flow(google_config)
-                auth_url, _ = flow.authorization_url(prompt='consent')
-                st.link_button("🔓 Login with Google", auth_url, type="primary", use_container_width=True)
-                
-                st.markdown(f"""
-                <div class="card" style="margin-top: 20px;">
-                    <p style="text-align: center; color: #666666; font-size: 12px;">
-                        Configured redirect: <code>{google_config['redirect_uris'][0]}</code>
-                    </p>
-                </div>
-                """, unsafe_allow_html=True)
-            except Exception as e:
-                st.error(f"Error creating auth flow: {e}")
-        else:
-            st.error("Google OAuth configuration not found")
+        if st.button("🔓 Login with Google", type="primary", use_container_width=True):
+            # This will trigger Streamlit's built-in auth
+            st.login()
     
     st.stop()
 
 # ==================== MAIN APPLICATION (After Authentication) ====================
 
 # Get user info for display
-user_info = st.session_state.google_user_info
+user_info = get_user_info()
 
 # Main Dashboard Layout
 st.markdown(f"""
@@ -430,7 +398,7 @@ st.markdown(f"""
     </div>
     <div style="display: flex; gap: 10px; align-items: center;">
         <div class="user-badge">
-            <img src="{user_info.get('picture', '')}" alt="Profile">
+            {"<img src='" + user_info.get('picture', '') + "' alt='Profile'>" if user_info.get('picture') else ""}
             <span>{user_info.get('name', 'User')}</span>
         </div>
         <span class="status-badge">Connected</span>
@@ -445,7 +413,7 @@ with st.sidebar:
     st.markdown(f"""
     <div class="card">
         <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
-            <img src="{user_info.get('picture', '')}" style="width: 40px; height: 40px; border-radius: 50%;">
+            {"<img src='" + user_info.get('picture', '') + "' style='width: 40px; height: 40px; border-radius: 50%;'>" if user_info.get('picture') else "<div style='width: 40px; height: 40px; border-radius: 50%; background: rgba(0, 255, 136, 0.1); display: flex; align-items: center; justify-content: center; color: #00ff88;'>👤</div>"}
             <div>
                 <p style="margin: 0; font-weight: 600; color: #fff;">{user_info.get('name', 'User')}</p>
                 <p style="margin: 0; font-size: 12px; color: #999;">{user_info.get('email', '')}</p>
@@ -455,10 +423,7 @@ with st.sidebar:
     """, unsafe_allow_html=True)
     
     if st.button("🚪 Logout", type="secondary", use_container_width=True):
-        st.session_state.google_credentials = None
-        st.session_state.google_user_info = None
-        st.query_params.clear()
-        st.rerun()
+        st.logout()
 
 # ==================== HELPER FUNCTIONS FOR EARTH ENGINE ====================
 
@@ -896,8 +861,7 @@ st.markdown("""
         <span class="status-badge">3D Mapbox</span>
         <span class="status-badge">Earth Engine</span>
         <span class="status-badge">Streamlit</span>
-        <span class="status-badge">Google Auth</span>
+        <span class="status-badge">Streamlit Auth</span>
     </div>
 </div>
 """, unsafe_allow_html=True)
- 
