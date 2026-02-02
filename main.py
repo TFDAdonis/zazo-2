@@ -64,6 +64,31 @@ if "google_credentials" not in st.session_state:
     st.session_state.google_credentials = None
 if "google_user_info" not in st.session_state:
     st.session_state.google_user_info = None
+if "show_welcome" not in st.session_state:
+    st.session_state.show_welcome = True
+if "session_start_time" not in st.session_state:
+    st.session_state.session_start_time = datetime.now()
+
+# ==================== HELPER FUNCTIONS ====================
+
+def get_user_display_name(user_info):
+    """Extract display name from user info"""
+    if not user_info:
+        return "User"
+    
+    name = user_info.get('name', 'User')
+    given_name = user_info.get('given_name', name.split()[0] if ' ' in name else name)
+    return given_name
+
+def get_session_duration():
+    """Calculate session duration"""
+    if 'session_start_time' not in st.session_state:
+        st.session_state.session_start_time = datetime.now()
+    
+    duration = datetime.now() - st.session_state.session_start_time
+    hours = duration.seconds // 3600
+    minutes = (duration.seconds % 3600) // 60
+    return f"{hours}h {minutes}m"
 
 # ==================== CUSTOM CSS ====================
 
@@ -194,6 +219,17 @@ st.markdown("""
         box-shadow: 0 5px 15px rgba(0, 255, 136, 0.3);
     }
     
+    .stButton > button[data-testid="baseButton-secondary"] {
+        background: #222222 !important;
+        color: var(--text-white) !important;
+        border: 1px solid var(--border-gray) !important;
+    }
+    
+    .stButton > button[data-testid="baseButton-secondary"]:hover {
+        background: #333333 !important;
+        border-color: var(--primary-green) !important;
+    }
+    
     /* Input fields */
     .stTextInput > div > div > input,
     .stSelectbox > div > div > select,
@@ -258,12 +294,27 @@ st.markdown("""
         border-radius: 20px;
         font-size: 12px;
         color: var(--primary-green);
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+    
+    .user-badge:hover {
+        background: rgba(0, 255, 136, 0.2);
+        border-color: var(--primary-green);
+        transform: translateY(-1px);
     }
     
     .user-badge img {
         width: 24px;
         height: 24px;
         border-radius: 50%;
+        border: 1px solid rgba(0, 255, 136, 0.5);
+    }
+    
+    /* Toast animations */
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(-10px); }
+        to { opacity: 1; transform: translateY(0); }
     }
     
     /* Hide Streamlit default elements */
@@ -401,14 +452,6 @@ if not st.session_state.google_credentials:
                 flow = create_google_flow(google_config)
                 auth_url, _ = flow.authorization_url(prompt='consent')
                 st.link_button("🔓 Login with Google", auth_url, type="primary", use_container_width=True)
-                
-                st.markdown(f"""
-                <div class="card" style="margin-top: 20px;">
-                    <p style="text-align: center; color: #666666; font-size: 12px;">
-                        Configured redirect: <code>{google_config['redirect_uris'][0]}</code>
-                    </p>
-                </div>
-                """, unsafe_allow_html=True)
             except Exception as e:
                 st.error(f"Error creating auth flow: {e}")
         else:
@@ -421,6 +464,25 @@ if not st.session_state.google_credentials:
 # Get user info for display
 user_info = st.session_state.google_user_info
 
+# Display the main app interface
+# Welcome toast notification
+if st.session_state.show_welcome:
+    st.markdown(f"""
+    <div class="card" style="background: rgba(0, 255, 136, 0.1); border: 1px solid rgba(0, 255, 136, 0.3); margin-bottom: 15px; animation: fadeIn 0.5s;">
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <div class="icon" style="background: rgba(0, 255, 136, 0.2);">👋</div>
+                <div>
+                    <p style="margin: 0; color: #00ff88; font-weight: 600;">Welcome to KHISBA GIS, {get_user_display_name(user_info)}!</p>
+                    <p style="margin: 5px 0 0 0; color: #aaa; font-size: 12px;">Start exploring 3D vegetation analytics. Your session is securely authenticated.</p>
+                </div>
+            </div>
+            <button onclick="this.parentElement.parentElement.style.display='none'" style="background: none; border: none; color: #999; cursor: pointer; font-size: 20px;">×</button>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    st.session_state.show_welcome = False
+
 # Main Dashboard Layout
 st.markdown(f"""
 <div class="compact-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
@@ -429,9 +491,13 @@ st.markdown(f"""
         <p style="color: #999999; margin: 0; font-size: 14px;">Interactive 3D Global Vegetation Analytics</p>
     </div>
     <div style="display: flex; gap: 10px; align-items: center;">
-        <div class="user-badge">
+        <div style="text-align: right; padding-right: 10px;">
+            <p style="margin: 0; color: #ffffff; font-weight: 600;">Welcome back, {get_user_display_name(user_info)}! 👋</p>
+            <p style="margin: 0; font-size: 12px; color: #999999;">{user_info.get('email', '')}</p>
+        </div>
+        <div class="user-badge" id="user-badge">
             <img src="{user_info.get('picture', '')}" alt="Profile">
-            <span>{user_info.get('name', 'User')}</span>
+            <span>▼</span>
         </div>
         <span class="status-badge">Connected</span>
         <span class="status-badge">3D Mapbox Globe</span>
@@ -440,25 +506,106 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# Logout button in sidebar
+# Add JavaScript for user dropdown
+st.markdown("""
+<script>
+// Create dropdown menu
+const userBadge = document.getElementById('user-badge');
+if (userBadge) {
+    const dropdown = document.createElement('div');
+    dropdown.innerHTML = `
+        <div style="position: absolute; top: 40px; right: 0; background: #0a0a0a; border: 1px solid #222; border-radius: 8px; padding: 10px; min-width: 200px; z-index: 1000; box-shadow: 0 5px 20px rgba(0,0,0,0.3);">
+            <div style="padding: 10px; border-bottom: 1px solid #222;">
+                <p style="margin: 0; font-weight: 600; color: #fff;">User Menu</p>
+            </div>
+            <button onclick="document.getElementById('logout-modal').style.display='block'; this.parentElement.style.display='none'" style="width: 100%; text-align: left; background: none; border: none; color: #fff; padding: 10px; cursor: pointer; border-radius: 4px;">
+                🚪 Logout
+            </button>
+        </div>
+    `;
+    dropdown.style.display = 'none';
+    dropdown.style.position = 'absolute';
+    document.body.appendChild(dropdown);
+    
+    userBadge.addEventListener('click', function(e) {
+        e.stopPropagation();
+        dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
+        dropdown.style.top = (userBadge.offsetTop + userBadge.offsetHeight + 10) + 'px';
+        dropdown.style.right = (window.innerWidth - userBadge.getBoundingClientRect().right) + 'px';
+    });
+    
+    // Close dropdown when clicking outside
+    document.addEventListener('click', function(e) {
+        if (!userBadge.contains(e.target) && !dropdown.contains(e.target)) {
+            dropdown.style.display = 'none';
+        }
+    });
+}
+</script>
+""", unsafe_allow_html=True)
+
+# Logout modal
+st.markdown("""
+<div id="logout-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 9999; align-items: center; justify-content: center;">
+    <div class="card" style="max-width: 400px; margin: auto; transform: translateY(50%);">
+        <div class="card-title">
+            <div class="icon">🚪</div>
+            <h3 style="margin: 0;">Logout</h3>
+        </div>
+        <p style="color: #cccccc; margin-bottom: 20px;">Are you sure you want to logout?</p>
+        <div style="display: flex; gap: 10px;">
+            <button onclick="document.querySelector('button[data-testid=\"baseButton-secondary\"]').click()" style="flex: 1; background: linear-gradient(90deg, #00ff88, #00cc6a); color: #000; border: none; padding: 10px; border-radius: 6px; font-weight: 600; cursor: pointer;">Yes, Logout</button>
+            <button onclick="document.getElementById('logout-modal').style.display='none'" style="flex: 1; background: #222222; color: #fff; border: 1px solid #444; padding: 10px; border-radius: 6px; cursor: pointer;">Cancel</button>
+        </div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+# Sidebar with enhanced user profile
 with st.sidebar:
     st.markdown(f"""
     <div class="card">
-        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
-            <img src="{user_info.get('picture', '')}" style="width: 40px; height: 40px; border-radius: 50%;">
-            <div>
-                <p style="margin: 0; font-weight: 600; color: #fff;">{user_info.get('name', 'User')}</p>
-                <p style="margin: 0; font-size: 12px; color: #999;">{user_info.get('email', '')}</p>
+        <div style="text-align: center; padding: 20px 0;">
+            <img src="{user_info.get('picture', '')}" style="width: 80px; height: 80px; border-radius: 50%; border: 2px solid #00ff88; margin-bottom: 15px;">
+            <h3 style="margin: 10px 0 5px 0; color: #fff;">{user_info.get('name', 'User')}</h3>
+            <p style="margin: 0 0 15px 0; color: #999; font-size: 12px;">{user_info.get('email', '')}</p>
+            <div style="background: rgba(0, 255, 136, 0.1); padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(0, 255, 136, 0.3);">
+                <p style="margin: 0; color: #00ff88; font-size: 12px; font-weight: 600;">Welcome to KHISBA GIS</p>
+                <p style="margin: 5px 0 0 0; color: #aaa; font-size: 11px;">You have full access to all features</p>
             </div>
         </div>
     </div>
     """, unsafe_allow_html=True)
     
-    if st.button("🚪 Logout", type="secondary", use_container_width=True):
+    # Logout button with icon
+    if st.button("🚪 Logout", type="secondary", use_container_width=True, key="logout_btn"):
         st.session_state.google_credentials = None
         st.session_state.google_user_info = None
+        st.session_state.show_welcome = True
         st.query_params.clear()
         st.rerun()
+    
+    # User session info
+    st.markdown(f"""
+    <div class="card">
+        <div class="card-title">
+            <div class="icon">📈</div>
+            <h4 style="margin: 0;">Your Session</h4>
+        </div>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+            <span style="color: #999; font-size: 12px;">Duration:</span>
+            <span style="color: #00ff88; font-weight: 600;">{get_session_duration()}</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+            <span style="color: #999; font-size: 12px;">Access Level:</span>
+            <span style="color: #00ff88; font-weight: 600;">Premium</span>
+        </div>
+        <div style="display: flex; justify-content: space-between;">
+            <span style="color: #999; font-size: 12px;">Status:</span>
+            <span style="color: #00ff88; font-weight: 600;">● Active</span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
 # ==================== HELPER FUNCTIONS FOR EARTH ENGINE ====================
 
@@ -887,15 +1034,15 @@ with col2:
         st.markdown('</div>', unsafe_allow_html=True)
 
 # Footer
-st.markdown("""
+st.markdown(f"""
 <div class="section-divider"></div>
 <div style="text-align: center; color: #666666; font-size: 12px; padding: 20px 0;">
     <p style="margin: 5px 0;">KHISBA GIS - Interactive 3D Global Vegetation Analytics Platform</p>
-    <p style="margin: 5px 0;">Created by Taibi Farouk Djilali - Clean Green & Black Design</p>
+    <p style="margin: 5px 0;">Logged in as: {user_info.get('email', '')} | Session: {get_session_duration()}</p>
     <div style="display: flex; justify-content: center; gap: 10px; margin-top: 10px;">
         <span class="status-badge">3D Mapbox</span>
         <span class="status-badge">Earth Engine</span>
-        <span class="status-badge">Streamlit</span>
+        <span class="status-badge">User: {get_user_display_name(user_info)}</span>
         <span class="status-badge">Google Auth</span>
     </div>
 </div>
