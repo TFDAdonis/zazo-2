@@ -381,25 +381,68 @@ if code and not st.session_state.google_credentials and google_config:
 # Replace the login section with this cleaner version:
 
 # Show login page if not authenticated
+# Show login page if not authenticated
 if not st.session_state.google_credentials:
     st.markdown("""
     <div class="main-container">
         <div class="content-container" style="max-width: 500px; margin: 100px auto;">
             <div class="card">
-                <h1 style="text-align: center; margin-bottom: 10px;">🌍 KHISBA GIS</h1>
-                <p style="text-align: center; color: #999999; margin-bottom: 30px;">3D Global Vegetation Analytics</p>
+                <div style="text-align: center; margin-bottom: 20px;">
+                    <img src="data:image/png;base64,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" 
+                         alt="KHISBA GIS Logo" 
+                         style="width: 60px; height: 60px; margin: 0 auto 20px; display: block; border-radius: 8px;">
+                    <h1 style="margin: 0 0 8px 0; text-align: center;">🌍 KHISBA GIS</h1>
+                    <p style="color: #999999; text-align: center; margin: 0 0 25px 0;">Interactive 3D Global Vegetation Analytics</p>
+                </div>
+                
+                <div style="text-align: center; padding: 20px 0; border-top: 1px solid #222222;">
+                    <p style="color: #00ff88; font-weight: 600; margin-bottom: 20px;">Sign in with Google to access the platform</p>
+                </div>
             </div>
         </div>
     </div>
     """, unsafe_allow_html=True)
     
+    # Login button in the center
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         if google_config:
             try:
                 flow = create_google_flow(google_config)
                 auth_url, _ = flow.authorization_url(prompt='consent')
-                st.link_button("🔓 Login with Google", auth_url, type="primary", use_container_width=True)
+                
+                # Create a nicer button using markdown
+                st.markdown(f"""
+                <div style="text-align: center;">
+                    <a href="{auth_url}" style="display: inline-flex; align-items: center; justify-content: center; 
+                    background: linear-gradient(90deg, #00ff88, #00cc6a); 
+                    color: #000000; 
+                    padding: 12px 24px; 
+                    border-radius: 8px; 
+                    text-decoration: none; 
+                    font-weight: 600; 
+                    font-size: 14px; 
+                    letter-spacing: 0.5px; 
+                    transition: all 0.3s ease;
+                    box-shadow: 0 4px 12px rgba(0, 255, 136, 0.2);
+                    gap: 8px;">
+                        <span>🔓</span> Login with Google
+                    </a>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Terms and Privacy notice
+                st.markdown("""
+                <div style="text-align: center; margin-top: 25px; padding: 15px; background: rgba(0, 0, 0, 0.2); border-radius: 8px;">
+                    <p style="color: #999999; font-size: 12px; line-height: 1.4; margin: 0;">
+                        By logging in, you agree to our 
+                        <span style="color: #00ff88; cursor: pointer;" onclick="alert('Terms of Service will be shown here')">Terms of Service</span> 
+                        and 
+                        <span style="color: #00ff88; cursor: pointer;" onclick="alert('Privacy Policy will be shown here')">Privacy Policy</span>.
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
+                
             except Exception as e:
                 st.error(f"Error creating auth flow: {e}")
         else:
