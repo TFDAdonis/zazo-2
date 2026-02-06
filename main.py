@@ -383,8 +383,15 @@ if not st.session_state.google_credentials:
     <div class="main-container">
         <div class="content-container" style="max-width: 500px; margin: 100px auto;">
             <div class="card">
-                >🌍 KHISBA GIS</h1>
-               
+                <h1 style="text-align: center; margin-bottom: 10px;">🌍 KHISBA GIS</h1>
+                <p style="text-align: center; color: #999999; margin-bottom: 30px;">3D Global Vegetation Analytics</p>
+                
+                <div style="text-align: center; padding: 20px;">
+                    <p style="color: #00ff88; font-weight: 600; margin-bottom: 20px;">Sign in with Google to access the platform</p>
+                </div>
+            </div>
+        </div>
+    </div>
     """, unsafe_allow_html=True)
     
     col1, col2, col3 = st.columns([1, 2, 1])
