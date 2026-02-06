@@ -443,6 +443,22 @@ st.markdown("""
         transform: translateY(-2px);
     }
     
+    /* Manual redirect instruction */
+    .redirect-instruction {
+        background: rgba(0, 255, 136, 0.1);
+        border: 1px solid rgba(0, 255, 136, 0.3);
+        border-radius: 10px;
+        padding: 15px;
+        margin-top: 20px;
+        text-align: center;
+        color: var(--text-light-gray);
+        font-size: 14px;
+    }
+    
+    .redirect-instruction strong {
+        color: var(--primary-green);
+    }
+    
     .section-divider {
         height: 1px;
         background: linear-gradient(90deg, transparent, var(--border-gray), transparent);
@@ -598,28 +614,50 @@ if not st.session_state.google_credentials:
     </div>
     """, unsafe_allow_html=True)
     
-    # Keep the same authentication logic but with modern styling
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        if google_config:
-            try:
-                flow = create_google_flow(google_config)
-                auth_url, _ = flow.authorization_url(prompt='consent')
-                
-                # Use modern styled button
-                st.markdown(f"""
-                <div style="text-align: center; margin-top: 30px;">
-                    <a href="{auth_url}" target="_self" style="text-decoration: none; display: inline-block; width: 100%;">
-                        <div class="login-page-button">
-                            <span>🔓 Login with Google</span>
-                        </div>
-                    </a>
+    # Create Google auth link that opens in new tab
+    if google_config:
+        try:
+            flow = create_google_flow(google_config)
+            auth_url, _ = flow.authorization_url(prompt='consent')
+            
+            # Display the auth URL and instructions
+            st.markdown("""
+            <div style="text-align: center; margin-top: 30px; max-width: 480px; margin-left: auto; margin-right: auto;">
+                <h3 style="color: #00ff88; margin-bottom: 20px;">🔓 Login with Google</h3>
+                <div class="redirect-instruction">
+                    <p><strong>⚠️ Important:</strong> Click the link below to open Google authentication in a new tab.</p>
+                    <p style="margin-top: 10px; font-size: 13px;">After completing authentication in the new tab, return to this page.</p>
                 </div>
-                """, unsafe_allow_html=True)
-            except Exception as e:
-                st.error(f"Error creating auth flow: {e}")
-        else:
-            st.error("Google OAuth configuration not found")
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Display clickable link that opens in new tab
+            st.markdown(f"""
+            <div style="text-align: center; margin-top: 20px;">
+                <a href="{auth_url}" target="_blank" style="text-decoration: none; display: inline-block; width: 100%; max-width: 480px;">
+                    <div class="login-page-button">
+                        <span>Open Google Login in New Tab</span>
+                    </div>
+                </a>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Manual refresh button
+            st.markdown("""
+            <div style="text-align: center; margin-top: 20px; max-width: 480px; margin-left: auto; margin-right: auto;">
+                <p style="color: #999999; font-size: 13px; margin-bottom: 10px;">After completing Google authentication, click below:</p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            col1, col2, col3 = st.columns([1, 2, 1])
+            with col2:
+                if st.button("🔄 I've Completed Google Login - Refresh Page", type="primary", use_container_width=True):
+                    st.rerun()
+            
+        except Exception as e:
+            st.error(f"Error creating auth flow: {e}")
+    else:
+        st.error("Google OAuth configuration not found")
     
     st.markdown('</div>', unsafe_allow_html=True)  # End login-page-container
     st.stop()
