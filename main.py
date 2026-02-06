@@ -899,4 +899,4 @@ st.markdown("""
         <span class="status-badge">Google Auth</span>
     </div>
 </div> 
-""", unsafe_allow_html=True)      xx
+""", unsafe_allow_html=True)    
