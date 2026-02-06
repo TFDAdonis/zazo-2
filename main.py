@@ -383,6 +383,7 @@ if not st.session_state.google_credentials:
     <div class="main-container">
         <div class="content-container" style="max-width: 500px; margin: 100px auto;">
             <div class="card">
+                >🌍 KHISBA GIS</h1>
                
     """, unsafe_allow_html=True)
     
@@ -891,4 +892,4 @@ st.markdown("""
         <span class="status-badge">Google Auth</span>
     </div>
 </div> 
-""", unsafe_allow_html=True)      
+""", unsafe_allow_html=True)     
