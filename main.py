@@ -28,18 +28,43 @@ st.set_page_config(
 # Load Google OAuth secrets
 def load_google_config():
     try:
+        # First try to get from Streamlit secrets
         if "web" in st.secrets:
             client_config = dict(st.secrets["web"])
+            
+            # Override redirect URIs to match current environment
+            if "redirect_uris" in client_config:
+                # Use the current app URL as redirect URI
+                current_url = st.secrets.get("CURRENT_URL", "https://zazoo-2-cpwtcholx7mk8ddfhx7dgp.streamlit.app")
+                client_config["redirect_uris"] = [f"{current_url}"]
+                
+            return client_config
+        
+        # Fallback to client_secret.json
         elif os.path.exists("client_secret.json"):
             with open("client_secret.json", "r") as f:
                 client_config = json.load(f)["web"]
+                
+                # Override redirect URIs for current environment
+                current_url = "https://zazoo-2-cpwtcholx7mk8ddfhx7dgp.streamlit.app"
+                client_config["redirect_uris"] = [current_url]
+                
+            return client_config
+            
+        # Manual configuration for deployed app
         else:
-            return None
-        return client_config
+            return {
+                "client_id": st.secrets.get("GOOGLE_CLIENT_ID", ""),
+                "project_id": st.secrets.get("GOOGLE_PROJECT_ID", ""),
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+                "client_secret": st.secrets.get("GOOGLE_CLIENT_SECRET", ""),
+                "redirect_uris": ["https://zazoo-2-cpwtcholx7mk8ddfhx7dgp.streamlit.app"],
+                "javascript_origins": ["https://zazoo-2-cpwtcholx7mk8ddfhx7dgp.streamlit.app"]
+            }
+            
     except Exception:
-        if os.path.exists("client_secret.json"):
-            with open("client_secret.json", "r") as f:
-                return json.load(f)["web"]
         return None
 
 GOOGLE_SCOPES = [
@@ -49,15 +74,30 @@ GOOGLE_SCOPES = [
 ]
 
 def create_google_flow(client_config):
+    if not client_config:
+        return None
+        
+    # Ensure redirect_uris is a list
     if "redirect_uris" in client_config and isinstance(client_config["redirect_uris"], str):
         client_config["redirect_uris"] = [client_config["redirect_uris"]]
     
-    flow = google_auth_oauthlib.flow.Flow.from_client_config(
-        {"web": client_config},
-        scopes=GOOGLE_SCOPES,
-        redirect_uri=client_config["redirect_uris"][0]
-    )
-    return flow
+    # Use the correct redirect URI for the current environment
+    if "redirect_uris" in client_config and client_config["redirect_uris"]:
+        redirect_uri = client_config["redirect_uris"][0]
+    else:
+        # Default to your Streamlit app URL
+        redirect_uri = "https://zazoo-2-cpwtcholx7mk8ddfhx7dgp.streamlit.app"
+    
+    try:
+        flow = google_auth_oauthlib.flow.Flow.from_client_config(
+            {"web": client_config},
+            scopes=GOOGLE_SCOPES,
+            redirect_uri=redirect_uri
+        )
+        return flow
+    except Exception as e:
+        st.error(f"Error creating Google flow: {str(e)}")
+        return None
 
 # Initialize session state for Google auth
 if "google_credentials" not in st.session_state:
@@ -271,7 +311,7 @@ st.markdown("""
     footer {visibility: hidden;}
     header {visibility: hidden;}
     
-    /* MODERN LOGIN PAGE STYLING */
+    /* Modern Login Page Styling */
     .login-page-container {
         display: flex;
         flex-direction: column;
@@ -541,12 +581,24 @@ if 'selected_area_name' not in st.session_state:
 
 google_config = load_google_config()
 
-# Handle OAuth callback - KEEP THIS EXACTLY AS IS
+# Handle OAuth callback - Updated for Streamlit Cloud
 code = st.query_params.get("code")
+state = st.query_params.get("state")
+
 if code and not st.session_state.google_credentials and google_config:
     with st.spinner("Authenticating with Google..."):
         try:
-            flow = create_google_flow(google_config)
+            # Get the current URL for redirect_uri
+            current_url = "https://zazoo-2-cpwtcholx7mk8ddfhx7dgp.streamlit.app"
+            
+            # Create flow with the correct redirect URI
+            flow = google_auth_oauthlib.flow.Flow.from_client_config(
+                {"web": google_config},
+                scopes=GOOGLE_SCOPES,
+                redirect_uri=current_url
+            )
+            
+            # Fetch token using the authorization code
             flow.fetch_token(code=code)
             credentials = flow.credentials
             st.session_state.google_credentials = credentials
@@ -556,15 +608,17 @@ if code and not st.session_state.google_credentials and google_config:
             user_info = service.userinfo().get().execute()
             st.session_state.google_user_info = user_info
             
+            # Clear query params and rerun
             st.query_params.clear()
             st.rerun()
+            
         except Exception as e:
-            st.error(f"Authentication failed: {e}")
+            st.error(f"Authentication failed: {str(e)}")
             st.query_params.clear()
 
-# ==================== MODERN LOGIN PAGE (ONLY DESIGN CHANGED) ====================
+# ==================== MODERN LOGIN PAGE ====================
 
-# Show login page if not authenticated - KEEP LOGIC EXACTLY THE SAME
+# Show login page if not authenticated
 if not st.session_state.google_credentials:
     # Add modern background elements
     import random
@@ -598,15 +652,27 @@ if not st.session_state.google_credentials:
     </div>
     """, unsafe_allow_html=True)
     
-    # KEEP THE EXACT SAME AUTHENTICATION LOGIC
+    # Create login button with proper redirect URI
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         if google_config:
             try:
-                flow = create_google_flow(google_config)
-                auth_url, _ = flow.authorization_url(prompt='consent')
+                # Use the correct redirect URI for Streamlit Cloud
+                redirect_uri = "https://zazoo-2-cpwtcholx7mk8ddfhx7dgp.streamlit.app"
                 
-                # Use the same st.link_button but with modern styling
+                flow = google_auth_oauthlib.flow.Flow.from_client_config(
+                    {"web": google_config},
+                    scopes=GOOGLE_SCOPES,
+                    redirect_uri=redirect_uri
+                )
+                
+                # Generate authorization URL
+                auth_url, _ = flow.authorization_url(
+                    access_type='offline',
+                    prompt='consent'
+                )
+                
+                # Create login button
                 st.markdown(f"""
                 <div style="text-align: center; margin-top: 30px;">
                     <a href="{auth_url}" target="_self" style="text-decoration: none; display: inline-block; width: 100%;">
@@ -616,10 +682,19 @@ if not st.session_state.google_credentials:
                     </a>
                 </div>
                 """, unsafe_allow_html=True)
+                
+                # Also show a debug info if needed
+                if st.secrets.get("DEBUG", False):
+                    st.info(f"Redirect URI: {redirect_uri}")
+                    st.info(f"Client ID: {google_config.get('client_id', 'Not found')[:20]}...")
+                    
             except Exception as e:
-                st.error(f"Error creating auth flow: {e}")
+                st.error(f"Error creating auth flow: {str(e)}")
+                # Show debug info
+                if st.secrets.get("DEBUG", False):
+                    st.error(f"Config keys: {list(google_config.keys()) if google_config else 'No config'}")
         else:
-            st.error("Google OAuth configuration not found")
+            st.error("Google OAuth configuration not found. Please check your secrets configuration.")
     
     st.markdown('</div>', unsafe_allow_html=True)  # End login-page-container
     st.stop()
