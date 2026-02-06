@@ -85,27 +85,28 @@ st.markdown("""
     /* Auth Container */
     .auth-container {
         max-width: 420px;
-        margin: 80px auto;
+        margin: 40px auto;
         padding: 20px;
     }
     
     .auth-card {
         background: var(--card-black);
         border: 1px solid var(--border-gray);
-        border-radius: 12px;
-        padding: 30px;
+        border-radius: 16px;
+        padding: 40px 30px;
         backdrop-filter: blur(10px);
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
     }
     
     .auth-header {
         text-align: center;
-        margin-bottom: 30px;
+        margin-bottom: 40px;
     }
     
     .auth-logo {
         width: 80px;
         height: 80px;
-        background: rgba(0, 255, 136, 0.1);
+        background: linear-gradient(135deg, rgba(0, 255, 136, 0.1), rgba(0, 204, 106, 0.1));
         border-radius: 50%;
         display: flex;
         align-items: center;
@@ -122,37 +123,41 @@ st.markdown("""
     
     /* Form Fields */
     .form-group {
-        margin-bottom: 20px;
+        margin-bottom: 25px;
         position: relative;
     }
     
     .form-label {
         display: block;
-        margin-bottom: 8px;
+        margin-bottom: 10px;
         color: var(--text-light-gray);
         font-size: 14px;
         font-weight: 500;
+        letter-spacing: 0.5px;
+    }
+    
+    .form-input-container {
+        position: relative;
+        background: var(--secondary-black);
+        border: 1px solid var(--border-gray);
+        border-radius: 10px;
+        padding: 5px;
+        transition: all 0.3s ease;
+    }
+    
+    .form-input-container:focus-within {
+        border-color: var(--primary-green);
+        box-shadow: 0 0 0 3px rgba(0, 255, 136, 0.1);
     }
     
     .form-input {
         width: 100%;
-        background: var(--secondary-black) !important;
-        border: 1px solid var(--border-gray) !important;
+        background: transparent !important;
+        border: none !important;
         color: var(--text-white) !important;
-        border-radius: 8px !important;
-        padding: 12px 16px !important;
-        font-size: 14px !important;
-        transition: all 0.2s ease;
-    }
-    
-    .form-input:focus {
-        border-color: var(--primary-green) !important;
-        box-shadow: 0 0 0 3px rgba(0, 255, 136, 0.1) !important;
-        outline: none;
-    }
-    
-    .form-input-with-icon {
-        padding-left: 44px !important;
+        padding: 14px 16px !important;
+        font-size: 15px !important;
+        outline: none !important;
     }
     
     .form-icon {
@@ -161,10 +166,11 @@ st.markdown("""
         top: 50%;
         transform: translateY(-50%);
         color: var(--text-gray);
-        transition: color 0.2s ease;
+        z-index: 2;
+        transition: color 0.3s ease;
     }
     
-    .form-group:focus-within .form-icon {
+    .form-input-container:focus-within .form-icon {
         color: var(--primary-green);
     }
     
@@ -179,6 +185,8 @@ st.markdown("""
         color: var(--text-gray);
         cursor: pointer;
         padding: 4px;
+        z-index: 2;
+        transition: color 0.3s ease;
     }
     
     .password-toggle:hover {
@@ -189,55 +197,95 @@ st.markdown("""
     .checkbox-container {
         display: flex;
         align-items: center;
-        gap: 10px;
+        gap: 12px;
         cursor: pointer;
+        margin: 25px 0;
     }
     
     .checkbox-input {
         width: 18px;
         height: 18px;
-        accent-color: var(--primary-green);
+        background: var(--secondary-black);
+        border: 2px solid var(--border-gray);
+        border-radius: 4px;
+        appearance: none;
         cursor: pointer;
+        position: relative;
+        transition: all 0.3s ease;
+    }
+    
+    .checkbox-input:checked {
+        background: var(--primary-green);
+        border-color: var(--primary-green);
+    }
+    
+    .checkbox-input:checked::after {
+        content: '✓';
+        position: absolute;
+        color: var(--primary-black);
+        font-size: 12px;
+        font-weight: bold;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
     }
     
     .checkbox-label {
         color: var(--text-light-gray);
         font-size: 14px;
         cursor: pointer;
+        user-select: none;
     }
     
     /* Auth Button */
-    .auth-button {
+    .auth-btn {
         width: 100%;
         background: linear-gradient(90deg, var(--primary-green), var(--accent-green));
         color: var(--primary-black) !important;
         border: none !important;
-        padding: 14px 24px !important;
-        border-radius: 8px !important;
+        padding: 16px 24px !important;
+        border-radius: 10px !important;
         font-weight: 600 !important;
-        font-size: 15px !important;
+        font-size: 16px !important;
         letter-spacing: 0.5px;
         transition: all 0.3s ease !important;
-        margin-top: 10px !important;
         cursor: pointer !important;
+        position: relative;
+        overflow: hidden;
     }
     
-    .auth-button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 25px rgba(0, 255, 136, 0.3) !important;
+    .auth-btn:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 10px 30px rgba(0, 255, 136, 0.4) !important;
     }
     
-    .auth-button:disabled {
+    .auth-btn:disabled {
         opacity: 0.6;
         cursor: not-allowed !important;
+        transform: none !important;
+        box-shadow: none !important;
+    }
+    
+    .btn-shine {
+        position: absolute;
+        top: 0;
+        left: -100%;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+        transition: 0.5s;
+    }
+    
+    .auth-btn:hover .btn-shine {
+        left: 100%;
     }
     
     /* Loading Spinner */
     .loading-spinner {
-        width: 20px;
-        height: 20px;
-        border: 3px solid rgba(255, 255, 255, 0.3);
-        border-top: 3px solid var(--text-white);
+        width: 24px;
+        height: 24px;
+        border: 3px solid rgba(0, 0, 0, 0.3);
+        border-top: 3px solid var(--primary-black);
         border-radius: 50%;
         animation: spin 1s linear infinite;
         margin: 0 auto;
@@ -252,80 +300,105 @@ st.markdown("""
     .divider {
         display: flex;
         align-items: center;
-        margin: 25px 0;
+        margin: 35px 0;
         color: var(--text-gray);
-        font-size: 13px;
+        font-size: 14px;
+        font-weight: 500;
     }
     
-    .divider::before,
-    .divider::after {
-        content: "";
+    .divider-line {
         flex: 1;
-        border-bottom: 1px solid var(--border-gray);
+        height: 1px;
+        background: var(--border-gray);
     }
     
-    .divider span {
-        padding: 0 15px;
+    .divider-text {
+        padding: 0 20px;
+        color: var(--text-gray);
     }
     
     /* Social Buttons */
     .social-buttons {
         display: grid;
         grid-template-columns: repeat(3, 1fr);
-        gap: 10px;
-        margin-top: 20px;
+        gap: 15px;
+        margin: 30px 0;
     }
     
-    .social-button {
-        padding: 12px !important;
+    .social-btn {
+        padding: 14px !important;
         background: var(--secondary-black) !important;
         border: 1px solid var(--border-gray) !important;
-        border-radius: 8px !important;
+        border-radius: 10px !important;
         transition: all 0.3s ease !important;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
     }
     
-    .social-button:hover {
+    .social-btn:hover {
         border-color: var(--primary-green) !important;
         transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(0, 255, 136, 0.2) !important;
     }
     
     .social-icon {
+        width: 22px;
+        height: 22px;
         color: var(--text-white);
         transition: color 0.3s ease;
     }
     
-    .social-button:hover .social-icon {
+    .social-btn:hover .social-icon {
         color: var(--primary-green);
     }
     
     /* Toggle Link */
     .toggle-link {
         text-align: center;
-        margin-top: 25px;
+        margin-top: 35px;
         color: var(--text-gray);
-        font-size: 14px;
+        font-size: 15px;
+        padding-top: 25px;
+        border-top: 1px solid var(--border-gray);
     }
     
     .toggle-link a {
         color: var(--primary-green);
         text-decoration: none;
-        font-weight: 500;
+        font-weight: 600;
         cursor: pointer;
+        margin-left: 8px;
+        transition: all 0.3s ease;
     }
     
     .toggle-link a:hover {
         text-decoration: underline;
+        text-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
     }
     
     /* Status Messages */
     .status-message {
-        padding: 12px 16px;
-        border-radius: 8px;
-        margin-bottom: 20px;
+        padding: 16px 20px;
+        border-radius: 10px;
+        margin-bottom: 25px;
         font-size: 14px;
         display: flex;
         align-items: center;
-        gap: 10px;
+        gap: 12px;
+        animation: slideIn 0.3s ease;
+    }
+    
+    @keyframes slideIn {
+        from {
+            opacity: 0;
+            transform: translateY(-10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
     }
     
     .status-success {
@@ -469,6 +542,8 @@ def initialize_session_state():
         st.session_state.remember_me = False
     if 'auth_loading' not in st.session_state:
         st.session_state.auth_loading = False
+    if 'form_submitted' not in st.session_state:
+        st.session_state.form_submitted = False
 
 def render_auth_page():
     """Render the authentication page"""
@@ -477,6 +552,7 @@ def render_auth_page():
     def toggle_auth_mode():
         st.session_state.auth_mode = 'signup' if st.session_state.auth_mode == 'login' else 'login'
         st.session_state.show_password = False
+        st.session_state.form_submitted = False
     
     st.markdown('<div class="auth-container">', unsafe_allow_html=True)
     st.markdown('<div class="auth-card">', unsafe_allow_html=True)
@@ -490,17 +566,20 @@ def render_auth_page():
     
     # Form
     if st.session_state.auth_mode == 'login':
-        st.markdown('<h2 style="text-align: center; margin-bottom: 25px;">Sign In</h2>', unsafe_allow_html=True)
+        st.markdown('<h2 style="text-align: center; margin-bottom: 30px;">Sign In</h2>', unsafe_allow_html=True)
     else:
-        st.markdown('<h2 style="text-align: center; margin-bottom: 25px;">Create Account</h2>', unsafe_allow_html=True)
+        st.markdown('<h2 style="text-align: center; margin-bottom: 30px;">Create Account</h2>', unsafe_allow_html=True)
     
-    with st.form(key="auth_form"):
+    # Create form
+    with st.form(key="auth_form", clear_on_submit=False):
         if st.session_state.auth_mode == 'signup':
             # Name field for signup
-            col1, col2 = st.columns([1, 1])
+            col1, col2 = st.columns(2)
             with col1:
                 st.markdown('<div class="form-group">', unsafe_allow_html=True)
                 st.markdown('<label class="form-label">First Name</label>', unsafe_allow_html=True)
+                st.markdown('<div class="form-input-container">', unsafe_allow_html=True)
+                st.markdown('<div class="form-icon">👤</div>', unsafe_allow_html=True)
                 first_name = st.text_input(
                     "First Name",
                     key="first_name",
@@ -508,10 +587,13 @@ def render_auth_page():
                     placeholder="John"
                 )
                 st.markdown('</div>', unsafe_allow_html=True)
+                st.markdown('</div>', unsafe_allow_html=True)
             
             with col2:
                 st.markdown('<div class="form-group">', unsafe_allow_html=True)
                 st.markdown('<label class="form-label">Last Name</label>', unsafe_allow_html=True)
+                st.markdown('<div class="form-input-container">', unsafe_allow_html=True)
+                st.markdown('<div class="form-icon">👤</div>', unsafe_allow_html=True)
                 last_name = st.text_input(
                     "Last Name",
                     key="last_name",
@@ -519,10 +601,13 @@ def render_auth_page():
                     placeholder="Doe"
                 )
                 st.markdown('</div>', unsafe_allow_html=True)
+                st.markdown('</div>', unsafe_allow_html=True)
         
         # Email field
         st.markdown('<div class="form-group">', unsafe_allow_html=True)
         st.markdown('<label class="form-label">Email Address</label>', unsafe_allow_html=True)
+        st.markdown('<div class="form-input-container">', unsafe_allow_html=True)
+        st.markdown('<div class="form-icon">✉️</div>', unsafe_allow_html=True)
         email = st.text_input(
             "Email",
             key="auth_email",
@@ -530,28 +615,30 @@ def render_auth_page():
             placeholder="you@example.com"
         )
         st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
         
         # Password field
         st.markdown('<div class="form-group">', unsafe_allow_html=True)
         st.markdown('<label class="form-label">Password</label>', unsafe_allow_html=True)
+        st.markdown('<div class="form-input-container">', unsafe_allow_html=True)
+        st.markdown('<div class="form-icon">🔒</div>', unsafe_allow_html=True)
         
-        col1, col2 = st.columns([1, 0.1])
-        with col1:
-            password_type = "text" if st.session_state.show_password else "password"
-            password = st.text_input(
-                "Password",
-                type=password_type,
-                key="auth_password",
-                label_visibility="collapsed",
-                placeholder="Enter your password"
-            )
+        password_type = "text" if st.session_state.show_password else "password"
+        password = st.text_input(
+            "Password",
+            type=password_type,
+            key="auth_password",
+            label_visibility="collapsed",
+            placeholder="Enter your password"
+        )
         
-        with col2:
-            eye_icon = "👁️‍🗨️" if st.session_state.show_password else "👁️"
-            if st.button(eye_icon, key="toggle_password"):
-                st.session_state.show_password = not st.session_state.show_password
-                st.rerun()
+        # Password toggle button outside of form
+        eye_icon = "👁️‍🗨️" if st.session_state.show_password else "👁️"
+        if st.markdown(f'<button class="password-toggle" type="button">{eye_icon}</button>', unsafe_allow_html=True):
+            st.session_state.show_password = not st.session_state.show_password
+            st.rerun()
         
+        st.markdown('</div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
         
         # Remember me checkbox
@@ -559,31 +646,41 @@ def render_auth_page():
         remember_me = st.checkbox(
             "Remember me",
             value=st.session_state.remember_me,
-            key="auth_remember_me"
+            key="auth_remember_me",
+            label_visibility="collapsed"
         )
+        st.markdown('<label class="checkbox-label">Remember me</label>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
         
         # Submit button
         submit_text = "Sign In" if st.session_state.auth_mode == 'login' else "Create Account"
-        submit_disabled = st.session_state.auth_loading
         
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
-            submit_button = st.form_submit_button(
-                label=submit_text,
-                disabled=submit_disabled,
-                type="primary",
-                use_container_width=True
-            )
+        # Create submit button container
+        st.markdown('<div style="position: relative;">', unsafe_allow_html=True)
+        submit_button = st.form_submit_button(
+            label=submit_text,
+            type="primary",
+            use_container_width=True,
+            on_click=lambda: setattr(st.session_state, 'form_submitted', True)
+        )
+        st.markdown('<div class="btn-shine"></div>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
         
-        if submit_button:
+        if st.session_state.form_submitted:
             if st.session_state.auth_mode == 'login':
                 handle_login(email, password, remember_me)
             else:
-                handle_signup(email, password, f"{first_name} {last_name}", remember_me)
+                if st.session_state.auth_mode == 'signup' and (not first_name or not last_name):
+                    st.error("Please fill in all fields")
+                else:
+                    handle_signup(email, password, f"{first_name} {last_name}" if st.session_state.auth_mode == 'signup' else email.split('@')[0].title(), remember_me)
     
     # Social login divider
-    st.markdown('<div class="divider"><span>Or continue with</span></div>', unsafe_allow_html=True)
+    st.markdown('<div class="divider">', unsafe_allow_html=True)
+    st.markdown('<div class="divider-line"></div>', unsafe_allow_html=True)
+    st.markdown('<div class="divider-text">Or continue with</div>', unsafe_allow_html=True)
+    st.markdown('<div class="divider-line"></div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
     
     # Social buttons
     col1, col2, col3 = st.columns(3)
@@ -598,8 +695,14 @@ def render_auth_page():
             st.info("Twitter authentication coming soon!")
     
     # Toggle link
-    toggle_text = "Don't have an account? Sign up" if st.session_state.auth_mode == 'login' else "Already have an account? Sign in"
-    st.markdown(f'<div class="toggle-link">{toggle_text} <a onclick="toggleAuth()">{toggle_text.split("? ")[1]}</a></div>', unsafe_allow_html=True)
+    if st.session_state.auth_mode == 'login':
+        toggle_text = "Don't have an account? "
+        toggle_action = "Sign up"
+    else:
+        toggle_text = "Already have an account? "
+        toggle_action = "Sign in"
+    
+    st.markdown(f'<div class="toggle-link">{toggle_text}<a onclick="toggleAuth()">{toggle_action}</a></div>', unsafe_allow_html=True)
     
     st.markdown('</div>', unsafe_allow_html=True)  # Close auth-card
     st.markdown('</div>', unsafe_allow_html=True)  # Close auth-container
@@ -613,6 +716,14 @@ def render_auth_page():
             value: 'toggle_auth'
         }, '*');
     }
+    
+    // Add click event listener for password toggle
+    document.querySelector('.password-toggle')?.addEventListener('click', function() {
+        window.parent.postMessage({
+            type: 'streamlit:setComponentValue',
+            value: 'toggle_password'
+        }, '*');
+    });
     </script>
     """, unsafe_allow_html=True)
 
@@ -623,7 +734,7 @@ def handle_login(email, password, remember_me):
         return
     
     st.session_state.auth_loading = True
-    st.rerun()
+    st.session_state.remember_me = remember_me
     
     # Simulate API call
     import time
@@ -638,10 +749,11 @@ def handle_login(email, password, remember_me):
             "remember_me": remember_me
         }
         st.session_state.auth_loading = False
-        st.success("Login successful!")
+        st.session_state.form_submitted = False
         st.rerun()
     else:
         st.session_state.auth_loading = False
+        st.session_state.form_submitted = False
         st.error("Invalid email or password. For demo: use any email and password >= 6 chars")
 
 def handle_signup(email, password, name, remember_me):
@@ -655,7 +767,7 @@ def handle_signup(email, password, name, remember_me):
         return
     
     st.session_state.auth_loading = True
-    st.rerun()
+    st.session_state.remember_me = remember_me
     
     # Simulate API call
     import time
@@ -668,7 +780,7 @@ def handle_signup(email, password, name, remember_me):
         "remember_me": remember_me
     }
     st.session_state.auth_loading = False
-    st.success("Account created successfully!")
+    st.session_state.form_submitted = False
     st.rerun()
 
 def render_logout_button():
@@ -690,6 +802,7 @@ def render_logout_button():
         if st.button("🚪 Logout", type="secondary", use_container_width=True):
             st.session_state.authenticated = False
             st.session_state.current_user = None
+            st.session_state.form_submitted = False
             st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
