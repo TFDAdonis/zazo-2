@@ -23,7 +23,49 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# ==================== CUSTOM CSS (Updated with Auth Styles) ====================
+# ==================== GOOGLE OAUTH CONFIGURATION ====================
+
+# Load Google OAuth secrets
+def load_google_config():
+    try:
+        if "web" in st.secrets:
+            client_config = dict(st.secrets["web"])
+        elif os.path.exists("client_secret.json"):
+            with open("client_secret.json", "r") as f:
+                client_config = json.load(f)["web"]
+        else:
+            return None
+        return client_config
+    except Exception:
+        if os.path.exists("client_secret.json"):
+            with open("client_secret.json", "r") as f:
+                return json.load(f)["web"]
+        return None
+
+GOOGLE_SCOPES = [
+    'https://www.googleapis.com/auth/userinfo.email', 
+    'https://www.googleapis.com/auth/userinfo.profile', 
+    'openid'
+]
+
+def create_google_flow(client_config):
+    if "redirect_uris" in client_config and isinstance(client_config["redirect_uris"], str):
+        client_config["redirect_uris"] = [client_config["redirect_uris"]]
+    
+    flow = google_auth_oauthlib.flow.Flow.from_client_config(
+        {"web": client_config},
+        scopes=GOOGLE_SCOPES,
+        redirect_uri=client_config["redirect_uris"][0]
+    )
+    return flow
+
+# Initialize session state for Google auth
+if "google_credentials" not in st.session_state:
+    st.session_state.google_credentials = None
+if "google_user_info" not in st.session_state:
+    st.session_state.google_user_info = None
+
+# ==================== CUSTOM CSS ====================
 
 st.markdown("""
 <style>
@@ -50,9 +92,6 @@ st.markdown("""
         --text-white: #ffffff;
         --text-gray: #999999;
         --text-light-gray: #cccccc;
-        --success-green: #00ff88;
-        --danger-red: #ff4757;
-        --warning-orange: #ffa502;
     }
     
     /* Typography */
@@ -80,337 +119,6 @@ st.markdown("""
     h3 {
         font-size: 1.25rem !important;
         margin-bottom: 1rem !important;
-    }
-    
-    /* Auth Container */
-    .auth-container {
-        max-width: 420px;
-        margin: 40px auto;
-        padding: 20px;
-    }
-    
-    .auth-card {
-        background: var(--card-black);
-        border: 1px solid var(--border-gray);
-        border-radius: 16px;
-        padding: 40px 30px;
-        backdrop-filter: blur(10px);
-        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
-    }
-    
-    .auth-header {
-        text-align: center;
-        margin-bottom: 40px;
-    }
-    
-    .auth-logo {
-        width: 80px;
-        height: 80px;
-        background: linear-gradient(135deg, rgba(0, 255, 136, 0.1), rgba(0, 204, 106, 0.1));
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        margin: 0 auto 20px;
-        border: 2px solid var(--primary-green);
-    }
-    
-    .auth-logo svg {
-        width: 40px;
-        height: 40px;
-        color: var(--primary-green);
-    }
-    
-    /* Form Fields */
-    .form-group {
-        margin-bottom: 25px;
-        position: relative;
-    }
-    
-    .form-label {
-        display: block;
-        margin-bottom: 10px;
-        color: var(--text-light-gray);
-        font-size: 14px;
-        font-weight: 500;
-        letter-spacing: 0.5px;
-    }
-    
-    .form-input-container {
-        position: relative;
-        background: var(--secondary-black);
-        border: 1px solid var(--border-gray);
-        border-radius: 10px;
-        padding: 5px;
-        transition: all 0.3s ease;
-    }
-    
-    .form-input-container:focus-within {
-        border-color: var(--primary-green);
-        box-shadow: 0 0 0 3px rgba(0, 255, 136, 0.1);
-    }
-    
-    .form-input {
-        width: 100%;
-        background: transparent !important;
-        border: none !important;
-        color: var(--text-white) !important;
-        padding: 14px 16px !important;
-        font-size: 15px !important;
-        outline: none !important;
-    }
-    
-    .form-icon {
-        position: absolute;
-        left: 16px;
-        top: 50%;
-        transform: translateY(-50%);
-        color: var(--text-gray);
-        z-index: 2;
-        transition: color 0.3s ease;
-    }
-    
-    .form-input-container:focus-within .form-icon {
-        color: var(--primary-green);
-    }
-    
-    /* Password Toggle */
-    .password-toggle {
-        position: absolute;
-        right: 16px;
-        top: 50%;
-        transform: translateY(-50%);
-        background: none;
-        border: none;
-        color: var(--text-gray);
-        cursor: pointer;
-        padding: 4px;
-        z-index: 2;
-        transition: color 0.3s ease;
-    }
-    
-    .password-toggle:hover {
-        color: var(--primary-green);
-    }
-    
-    /* Checkbox */
-    .checkbox-container {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        cursor: pointer;
-        margin: 25px 0;
-    }
-    
-    .checkbox-input {
-        width: 18px;
-        height: 18px;
-        background: var(--secondary-black);
-        border: 2px solid var(--border-gray);
-        border-radius: 4px;
-        appearance: none;
-        cursor: pointer;
-        position: relative;
-        transition: all 0.3s ease;
-    }
-    
-    .checkbox-input:checked {
-        background: var(--primary-green);
-        border-color: var(--primary-green);
-    }
-    
-    .checkbox-input:checked::after {
-        content: '✓';
-        position: absolute;
-        color: var(--primary-black);
-        font-size: 12px;
-        font-weight: bold;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-    }
-    
-    .checkbox-label {
-        color: var(--text-light-gray);
-        font-size: 14px;
-        cursor: pointer;
-        user-select: none;
-    }
-    
-    /* Auth Button */
-    .auth-btn {
-        width: 100%;
-        background: linear-gradient(90deg, var(--primary-green), var(--accent-green));
-        color: var(--primary-black) !important;
-        border: none !important;
-        padding: 16px 24px !important;
-        border-radius: 10px !important;
-        font-weight: 600 !important;
-        font-size: 16px !important;
-        letter-spacing: 0.5px;
-        transition: all 0.3s ease !important;
-        cursor: pointer !important;
-        position: relative;
-        overflow: hidden;
-    }
-    
-    .auth-btn:hover {
-        transform: translateY(-3px);
-        box-shadow: 0 10px 30px rgba(0, 255, 136, 0.4) !important;
-    }
-    
-    .auth-btn:disabled {
-        opacity: 0.6;
-        cursor: not-allowed !important;
-        transform: none !important;
-        box-shadow: none !important;
-    }
-    
-    .btn-shine {
-        position: absolute;
-        top: 0;
-        left: -100%;
-        width: 100%;
-        height: 100%;
-        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
-        transition: 0.5s;
-    }
-    
-    .auth-btn:hover .btn-shine {
-        left: 100%;
-    }
-    
-    /* Loading Spinner */
-    .loading-spinner {
-        width: 24px;
-        height: 24px;
-        border: 3px solid rgba(0, 0, 0, 0.3);
-        border-top: 3px solid var(--primary-black);
-        border-radius: 50%;
-        animation: spin 1s linear infinite;
-        margin: 0 auto;
-    }
-    
-    @keyframes spin {
-        0% { transform: rotate(0deg); }
-        100% { transform: rotate(360deg); }
-    }
-    
-    /* Divider */
-    .divider {
-        display: flex;
-        align-items: center;
-        margin: 35px 0;
-        color: var(--text-gray);
-        font-size: 14px;
-        font-weight: 500;
-    }
-    
-    .divider-line {
-        flex: 1;
-        height: 1px;
-        background: var(--border-gray);
-    }
-    
-    .divider-text {
-        padding: 0 20px;
-        color: var(--text-gray);
-    }
-    
-    /* Social Buttons */
-    .social-buttons {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 15px;
-        margin: 30px 0;
-    }
-    
-    .social-btn {
-        padding: 14px !important;
-        background: var(--secondary-black) !important;
-        border: 1px solid var(--border-gray) !important;
-        border-radius: 10px !important;
-        transition: all 0.3s ease !important;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-    }
-    
-    .social-btn:hover {
-        border-color: var(--primary-green) !important;
-        transform: translateY(-2px);
-        box-shadow: 0 5px 15px rgba(0, 255, 136, 0.2) !important;
-    }
-    
-    .social-icon {
-        width: 22px;
-        height: 22px;
-        color: var(--text-white);
-        transition: color 0.3s ease;
-    }
-    
-    .social-btn:hover .social-icon {
-        color: var(--primary-green);
-    }
-    
-    /* Toggle Link */
-    .toggle-link {
-        text-align: center;
-        margin-top: 35px;
-        color: var(--text-gray);
-        font-size: 15px;
-        padding-top: 25px;
-        border-top: 1px solid var(--border-gray);
-    }
-    
-    .toggle-link a {
-        color: var(--primary-green);
-        text-decoration: none;
-        font-weight: 600;
-        cursor: pointer;
-        margin-left: 8px;
-        transition: all 0.3s ease;
-    }
-    
-    .toggle-link a:hover {
-        text-decoration: underline;
-        text-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
-    }
-    
-    /* Status Messages */
-    .status-message {
-        padding: 16px 20px;
-        border-radius: 10px;
-        margin-bottom: 25px;
-        font-size: 14px;
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        animation: slideIn 0.3s ease;
-    }
-    
-    @keyframes slideIn {
-        from {
-            opacity: 0;
-            transform: translateY(-10px);
-        }
-        to {
-            opacity: 1;
-            transform: translateY(0);
-        }
-    }
-    
-    .status-success {
-        background: rgba(0, 255, 136, 0.1);
-        border: 1px solid rgba(0, 255, 136, 0.3);
-        color: var(--primary-green);
-    }
-    
-    .status-error {
-        background: rgba(255, 71, 87, 0.1);
-        border: 1px solid rgba(255, 71, 87, 0.3);
-        color: var(--danger-red);
     }
     
     /* Layout Container */
@@ -486,6 +194,45 @@ st.markdown("""
         box-shadow: 0 5px 15px rgba(0, 255, 136, 0.3);
     }
     
+    /* Input fields */
+    .stTextInput > div > div > input,
+    .stSelectbox > div > div > select,
+    .stDateInput > div > div > input,
+    .stNumberInput > div > div > input,
+    .stTextArea > div > div > textarea {
+        background: var(--secondary-black) !important;
+        border: 1px solid var(--border-gray) !important;
+        color: var(--text-white) !important;
+        border-radius: 6px !important;
+        padding: 10px 12px !important;
+        font-size: 14px !important;
+    }
+    
+    .stTextInput > div > div > input:focus,
+    .stSelectbox > div > div > select:focus,
+    .stDateInput > div > div > input:focus {
+        border-color: var(--primary-green) !important;
+        box-shadow: 0 0 0 2px rgba(0, 255, 136, 0.2) !important;
+    }
+    
+    /* Map container */
+    .map-container {
+        border: 1px solid var(--border-gray);
+        border-radius: 10px;
+        overflow: hidden;
+        height: 600px;
+    }
+    
+    /* 3D Globe container */
+    .globe-container {
+        border: 1px solid var(--border-gray);
+        border-radius: 10px;
+        overflow: hidden;
+        height: 600px;
+        background: #000;
+        position: relative;
+    }
+    
     /* Status badges */
     .status-badge {
         display: inline-flex;
@@ -525,286 +272,6 @@ st.markdown("""
     header {visibility: hidden;}
 </style>
 """, unsafe_allow_html=True)
-
-# ==================== AUTHENTICATION SYSTEM ====================
-
-def initialize_session_state():
-    """Initialize session state variables for authentication"""
-    if 'authenticated' not in st.session_state:
-        st.session_state.authenticated = False
-    if 'current_user' not in st.session_state:
-        st.session_state.current_user = None
-    if 'auth_mode' not in st.session_state:
-        st.session_state.auth_mode = 'login'  # 'login' or 'signup'
-    if 'show_password' not in st.session_state:
-        st.session_state.show_password = False
-    if 'remember_me' not in st.session_state:
-        st.session_state.remember_me = False
-    if 'auth_loading' not in st.session_state:
-        st.session_state.auth_loading = False
-    if 'form_submitted' not in st.session_state:
-        st.session_state.form_submitted = False
-
-def render_auth_page():
-    """Render the authentication page"""
-    
-    # Toggle between login and signup
-    def toggle_auth_mode():
-        st.session_state.auth_mode = 'signup' if st.session_state.auth_mode == 'login' else 'login'
-        st.session_state.show_password = False
-        st.session_state.form_submitted = False
-    
-    st.markdown('<div class="auth-container">', unsafe_allow_html=True)
-    st.markdown('<div class="auth-card">', unsafe_allow_html=True)
-    
-    # Header
-    st.markdown('<div class="auth-header">', unsafe_allow_html=True)
-    st.markdown('<div class="auth-logo">🌍</div>', unsafe_allow_html=True)
-    st.markdown('<h1 style="text-align: center; margin-bottom: 5px;">KHISBA GIS</h1>', unsafe_allow_html=True)
-    st.markdown('<p style="text-align: center; color: #999999; margin-bottom: 30px;">Interactive 3D Global Vegetation Analytics</p>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
-    
-    # Form
-    if st.session_state.auth_mode == 'login':
-        st.markdown('<h2 style="text-align: center; margin-bottom: 30px;">Sign In</h2>', unsafe_allow_html=True)
-    else:
-        st.markdown('<h2 style="text-align: center; margin-bottom: 30px;">Create Account</h2>', unsafe_allow_html=True)
-    
-    # Create form
-    with st.form(key="auth_form", clear_on_submit=False):
-        if st.session_state.auth_mode == 'signup':
-            # Name field for signup
-            col1, col2 = st.columns(2)
-            with col1:
-                st.markdown('<div class="form-group">', unsafe_allow_html=True)
-                st.markdown('<label class="form-label">First Name</label>', unsafe_allow_html=True)
-                st.markdown('<div class="form-input-container">', unsafe_allow_html=True)
-                st.markdown('<div class="form-icon">👤</div>', unsafe_allow_html=True)
-                first_name = st.text_input(
-                    "First Name",
-                    key="first_name",
-                    label_visibility="collapsed",
-                    placeholder="John"
-                )
-                st.markdown('</div>', unsafe_allow_html=True)
-                st.markdown('</div>', unsafe_allow_html=True)
-            
-            with col2:
-                st.markdown('<div class="form-group">', unsafe_allow_html=True)
-                st.markdown('<label class="form-label">Last Name</label>', unsafe_allow_html=True)
-                st.markdown('<div class="form-input-container">', unsafe_allow_html=True)
-                st.markdown('<div class="form-icon">👤</div>', unsafe_allow_html=True)
-                last_name = st.text_input(
-                    "Last Name",
-                    key="last_name",
-                    label_visibility="collapsed",
-                    placeholder="Doe"
-                )
-                st.markdown('</div>', unsafe_allow_html=True)
-                st.markdown('</div>', unsafe_allow_html=True)
-        
-        # Email field
-        st.markdown('<div class="form-group">', unsafe_allow_html=True)
-        st.markdown('<label class="form-label">Email Address</label>', unsafe_allow_html=True)
-        st.markdown('<div class="form-input-container">', unsafe_allow_html=True)
-        st.markdown('<div class="form-icon">✉️</div>', unsafe_allow_html=True)
-        email = st.text_input(
-            "Email",
-            key="auth_email",
-            label_visibility="collapsed",
-            placeholder="you@example.com"
-        )
-        st.markdown('</div>', unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-        
-        # Password field
-        st.markdown('<div class="form-group">', unsafe_allow_html=True)
-        st.markdown('<label class="form-label">Password</label>', unsafe_allow_html=True)
-        st.markdown('<div class="form-input-container">', unsafe_allow_html=True)
-        st.markdown('<div class="form-icon">🔒</div>', unsafe_allow_html=True)
-        
-        password_type = "text" if st.session_state.show_password else "password"
-        password = st.text_input(
-            "Password",
-            type=password_type,
-            key="auth_password",
-            label_visibility="collapsed",
-            placeholder="Enter your password"
-        )
-        
-        # Password toggle button outside of form
-        eye_icon = "👁️‍🗨️" if st.session_state.show_password else "👁️"
-        if st.markdown(f'<button class="password-toggle" type="button">{eye_icon}</button>', unsafe_allow_html=True):
-            st.session_state.show_password = not st.session_state.show_password
-            st.rerun()
-        
-        st.markdown('</div>', unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-        
-        # Remember me checkbox
-        st.markdown('<div class="checkbox-container">', unsafe_allow_html=True)
-        remember_me = st.checkbox(
-            "Remember me",
-            value=st.session_state.remember_me,
-            key="auth_remember_me",
-            label_visibility="collapsed"
-        )
-        st.markdown('<label class="checkbox-label">Remember me</label>', unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-        
-        # Submit button
-        submit_text = "Sign In" if st.session_state.auth_mode == 'login' else "Create Account"
-        
-        # Create submit button container
-        st.markdown('<div style="position: relative;">', unsafe_allow_html=True)
-        submit_button = st.form_submit_button(
-            label=submit_text,
-            type="primary",
-            use_container_width=True,
-            on_click=lambda: setattr(st.session_state, 'form_submitted', True)
-        )
-        st.markdown('<div class="btn-shine"></div>', unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-        
-        if st.session_state.form_submitted:
-            if st.session_state.auth_mode == 'login':
-                handle_login(email, password, remember_me)
-            else:
-                if st.session_state.auth_mode == 'signup' and (not first_name or not last_name):
-                    st.error("Please fill in all fields")
-                else:
-                    handle_signup(email, password, f"{first_name} {last_name}" if st.session_state.auth_mode == 'signup' else email.split('@')[0].title(), remember_me)
-    
-    # Social login divider
-    st.markdown('<div class="divider">', unsafe_allow_html=True)
-    st.markdown('<div class="divider-line"></div>', unsafe_allow_html=True)
-    st.markdown('<div class="divider-text">Or continue with</div>', unsafe_allow_html=True)
-    st.markdown('<div class="divider-line"></div>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
-    
-    # Social buttons
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        if st.button("GitHub", key="github_auth", use_container_width=True):
-            st.info("GitHub authentication coming soon!")
-    with col2:
-        if st.button("Google", key="google_auth", use_container_width=True):
-            st.info("Google authentication coming soon!")
-    with col3:
-        if st.button("Twitter", key="twitter_auth", use_container_width=True):
-            st.info("Twitter authentication coming soon!")
-    
-    # Toggle link
-    if st.session_state.auth_mode == 'login':
-        toggle_text = "Don't have an account? "
-        toggle_action = "Sign up"
-    else:
-        toggle_text = "Already have an account? "
-        toggle_action = "Sign in"
-    
-    st.markdown(f'<div class="toggle-link">{toggle_text}<a onclick="toggleAuth()">{toggle_action}</a></div>', unsafe_allow_html=True)
-    
-    st.markdown('</div>', unsafe_allow_html=True)  # Close auth-card
-    st.markdown('</div>', unsafe_allow_html=True)  # Close auth-container
-    
-    # JavaScript for toggle
-    st.markdown("""
-    <script>
-    function toggleAuth() {
-        window.parent.postMessage({
-            type: 'streamlit:setComponentValue',
-            value: 'toggle_auth'
-        }, '*');
-    }
-    
-    // Add click event listener for password toggle
-    document.querySelector('.password-toggle')?.addEventListener('click', function() {
-        window.parent.postMessage({
-            type: 'streamlit:setComponentValue',
-            value: 'toggle_password'
-        }, '*');
-    });
-    </script>
-    """, unsafe_allow_html=True)
-
-def handle_login(email, password, remember_me):
-    """Handle login logic"""
-    if not email or not password:
-        st.error("Please enter both email and password")
-        return
-    
-    st.session_state.auth_loading = True
-    st.session_state.remember_me = remember_me
-    
-    # Simulate API call
-    import time
-    time.sleep(1.5)
-    
-    # For demo purposes, accept any valid email format
-    if "@" in email and len(password) >= 6:
-        st.session_state.authenticated = True
-        st.session_state.current_user = {
-            "email": email,
-            "name": email.split("@")[0].title(),
-            "remember_me": remember_me
-        }
-        st.session_state.auth_loading = False
-        st.session_state.form_submitted = False
-        st.rerun()
-    else:
-        st.session_state.auth_loading = False
-        st.session_state.form_submitted = False
-        st.error("Invalid email or password. For demo: use any email and password >= 6 chars")
-
-def handle_signup(email, password, name, remember_me):
-    """Handle signup logic"""
-    if not email or not password or not name:
-        st.error("Please fill in all fields")
-        return
-    
-    if len(password) < 6:
-        st.error("Password must be at least 6 characters")
-        return
-    
-    st.session_state.auth_loading = True
-    st.session_state.remember_me = remember_me
-    
-    # Simulate API call
-    import time
-    time.sleep(1.5)
-    
-    st.session_state.authenticated = True
-    st.session_state.current_user = {
-        "email": email,
-        "name": name,
-        "remember_me": remember_me
-    }
-    st.session_state.auth_loading = False
-    st.session_state.form_submitted = False
-    st.rerun()
-
-def render_logout_button():
-    """Render logout button in sidebar"""
-    with st.sidebar:
-        st.markdown('<div class="card">', unsafe_allow_html=True)
-        st.markdown(f"""
-        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
-            <div style="width: 40px; height: 40px; background: rgba(0, 255, 136, 0.1); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #00ff88; font-size: 16px;">
-                👤
-            </div>
-            <div>
-                <p style="margin: 0; font-weight: 600; color: #fff;">{st.session_state.current_user['name']}</p>
-                <p style="margin: 0; font-size: 12px; color: #999;">{st.session_state.current_user['email']}</p>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        if st.button("🚪 Logout", type="secondary", use_container_width=True):
-            st.session_state.authenticated = False
-            st.session_state.current_user = None
-            st.session_state.form_submitted = False
-            st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
 
 # ==================== EARTH ENGINE INITIALIZATION ====================
 
@@ -862,6 +329,136 @@ e5aU1RW6tlG8nzHHwK2FeyI=
     except Exception as e:
         st.error(f"Earth Engine auto-initialization failed: {str(e)}")
         return False
+
+# Initialize Earth Engine on app start
+if 'ee_auto_initialized' not in st.session_state:
+    with st.spinner("Initializing Earth Engine..."):
+        if auto_initialize_earth_engine():
+            st.session_state.ee_auto_initialized = True
+            st.session_state.ee_initialized = True
+        else:
+            st.session_state.ee_auto_initialized = False
+            st.session_state.ee_initialized = False
+
+# Initialize other session state
+if 'ee_initialized' not in st.session_state:
+    st.session_state.ee_initialized = False
+if 'selected_geometry' not in st.session_state:
+    st.session_state.selected_geometry = None
+if 'analysis_results' not in st.session_state:
+    st.session_state.analysis_results = None
+if 'selected_coordinates' not in st.session_state:
+    st.session_state.selected_coordinates = None
+if 'selected_area_name' not in st.session_state:
+    st.session_state.selected_area_name = None
+
+# ==================== GOOGLE AUTHENTICATION CHECK ====================
+
+google_config = load_google_config()
+
+# Handle OAuth callback
+code = st.query_params.get("code")
+if code and not st.session_state.google_credentials and google_config:
+    with st.spinner("Authenticating with Google..."):
+        try:
+            flow = create_google_flow(google_config)
+            flow.fetch_token(code=code)
+            credentials = flow.credentials
+            st.session_state.google_credentials = credentials
+            
+            # Get user info
+            service = build('oauth2', 'v2', credentials=credentials)
+            user_info = service.userinfo().get().execute()
+            st.session_state.google_user_info = user_info
+            
+            st.query_params.clear()
+            st.rerun()
+        except Exception as e:
+            st.error(f"Authentication failed: {e}")
+            st.query_params.clear()
+
+# Show login page if not authenticated
+if not st.session_state.google_credentials:
+    st.markdown("""
+    <div class="main-container">
+        <div class="content-container" style="max-width: 500px; margin: 100px auto;">
+            <div class="card">
+                <h1 style="text-align: center; margin-bottom: 10px;">🌍 KHISBA GIS</h1>
+                <p style="text-align: center; color: #999999; margin-bottom: 30px;">3D Global Vegetation Analytics</p>
+                
+                <div style="text-align: center; padding: 20px;">
+                    <p style="color: #00ff88; font-weight: 600; margin-bottom: 20px;">Sign in with Google to access the platform</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        if google_config:
+            try:
+                flow = create_google_flow(google_config)
+                auth_url, _ = flow.authorization_url(prompt='consent')
+                st.link_button("🔓 Login with Google", auth_url, type="primary", use_container_width=True)
+                
+                st.markdown(f"""
+                <div class="card" style="margin-top: 20px;">
+                    <p style="text-align: center; color: #666666; font-size: 12px;">
+                        Configured redirect: <code>{google_config['redirect_uris'][0]}</code>
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
+            except Exception as e:
+                st.error(f"Error creating auth flow: {e}")
+        else:
+            st.error("Google OAuth configuration not found")
+    
+    st.stop()
+
+# ==================== MAIN APPLICATION (After Authentication) ====================
+
+# Get user info for display
+user_info = st.session_state.google_user_info
+
+# Main Dashboard Layout
+st.markdown(f"""
+<div class="compact-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+    <div>
+        <h1>🌍 KHISBA GIS</h1>
+        <p style="color: #999999; margin: 0; font-size: 14px;">Interactive 3D Global Vegetation Analytics</p>
+    </div>
+    <div style="display: flex; gap: 10px; align-items: center;">
+        <div class="user-badge">
+            <img src="{user_info.get('picture', '')}" alt="Profile">
+            <span>{user_info.get('name', 'User')}</span>
+        </div>
+        <span class="status-badge">Connected</span>
+        <span class="status-badge">3D Mapbox Globe</span>
+        <span class="status-badge">v2.0</span>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+# Logout button in sidebar
+with st.sidebar:
+    st.markdown(f"""
+    <div class="card">
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
+            <img src="{user_info.get('picture', '')}" style="width: 40px; height: 40px; border-radius: 50%;">
+            <div>
+                <p style="margin: 0; font-weight: 600; color: #fff;">{user_info.get('name', 'User')}</p>
+                <p style="margin: 0; font-size: 12px; color: #999;">{user_info.get('email', '')}</p>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    if st.button("🚪 Logout", type="secondary", use_container_width=True):
+        st.session_state.google_credentials = None
+        st.session_state.google_user_info = None
+        st.query_params.clear()
+        st.rerun()
 
 # ==================== HELPER FUNCTIONS FOR EARTH ENGINE ====================
 
@@ -930,66 +527,6 @@ def get_geometry_coordinates(geometry):
     except Exception as e:
         st.error(f"Error getting coordinates: {str(e)}")
         return {'center': [0, 20], 'bounds': None, 'zoom': 2}
-
-# ==================== MAIN APPLICATION LOGIC ====================
-
-# Initialize session state
-initialize_session_state()
-
-# Initialize Earth Engine on app start
-if 'ee_auto_initialized' not in st.session_state:
-    with st.spinner("Initializing Earth Engine..."):
-        if auto_initialize_earth_engine():
-            st.session_state.ee_auto_initialized = True
-            st.session_state.ee_initialized = True
-        else:
-            st.session_state.ee_auto_initialized = False
-            st.session_state.ee_initialized = False
-
-# Initialize other session state
-if 'ee_initialized' not in st.session_state:
-    st.session_state.ee_initialized = False
-if 'selected_geometry' not in st.session_state:
-    st.session_state.selected_geometry = None
-if 'analysis_results' not in st.session_state:
-    st.session_state.analysis_results = None
-if 'selected_coordinates' not in st.session_state:
-    st.session_state.selected_coordinates = None
-if 'selected_area_name' not in st.session_state:
-    st.session_state.selected_area_name = None
-
-# ==================== ROUTING LOGIC ====================
-
-# Show authentication page if not authenticated
-if not st.session_state.authenticated:
-    render_auth_page()
-    st.stop()
-
-# ==================== MAIN DASHBOARD (After Authentication) ====================
-
-# Main Dashboard Layout
-st.markdown(f"""
-<div class="compact-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-    <div>
-        <h1>🌍 KHISBA GIS</h1>
-        <p style="color: #999999; margin: 0; font-size: 14px;">Interactive 3D Global Vegetation Analytics</p>
-    </div>
-    <div style="display: flex; gap: 10px; align-items: center;">
-        <div class="user-badge">
-            <div style="width: 24px; height: 24px; background: rgba(0, 255, 136, 0.1); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #00ff88; font-size: 12px;">
-                👤
-            </div>
-            <span>{st.session_state.current_user['name']}</span>
-        </div>
-        <span class="status-badge">Connected</span>
-        <span class="status-badge">3D Mapbox Globe</span>
-        <span class="status-badge">v2.0</span>
-    </div>
-</div>
-""", unsafe_allow_html=True)
-
-# Logout button in sidebar
-render_logout_button()
 
 # ==================== MAIN LAYOUT ====================
 
@@ -1277,7 +814,7 @@ with col2:
                   ]]
                 }}
               }}
-            }};
+            }});
 
             map.addLayer({{
               'id': 'selected-area-fill',
@@ -1288,7 +825,7 @@ with col2:
                 'fill-color': '#00ff88',
                 'fill-opacity': 0.2
               }}
-            }};
+            }});
 
             map.addLayer({{
               'id': 'selected-area-border',
@@ -1300,7 +837,7 @@ with col2:
                 'line-width': 3,
                 'line-opacity': 0.8
               }}
-            }};
+            }});
 
             map.flyTo({{
               center: {map_center},
@@ -1359,7 +896,7 @@ st.markdown("""
         <span class="status-badge">3D Mapbox</span>
         <span class="status-badge">Earth Engine</span>
         <span class="status-badge">Streamlit</span>
-        <span class="status-badge">User Auth</span>
+        <span class="status-badge">Google Auth</span>
     </div>
 </div> 
-""", unsafe_allow_html=True)
+""", unsafe_allow_html=True)      xx
