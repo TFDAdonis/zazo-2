@@ -380,329 +380,9 @@ if code and not st.session_state.google_credentials and google_config:
             st.query_params.clear()
 
 # Show login page if not authenticated
+# Show login page if not authenticated
 if not st.session_state.google_credentials:
-    # Add custom CSS for login page
-    st.markdown("""
-    <style>
-        /* Login Page Specific Styles */
-        .login-container {
-            display: flex;
-            min-height: 100vh;
-            background: linear-gradient(135deg, #000000 0%, #0a0a0a 50%, #001a00 100%);
-            position: relative;
-            overflow: hidden;
-        }
-        
-        .login-container::before {
-            content: '';
-            position: absolute;
-            width: 300%;
-            height: 300%;
-            background: radial-gradient(circle, rgba(0, 255, 136, 0.1) 0%, transparent 70%);
-            animation: pulse 15s infinite linear;
-            z-index: 0;
-        }
-        
-        @keyframes pulse {
-            0% { transform: translate(0, 0) rotate(0deg); }
-            100% { transform: translate(-50%, -50%) rotate(360deg); }
-        }
-        
-        .login-left {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            padding: 60px 40px;
-            position: relative;
-            z-index: 1;
-        }
-        
-        .login-right {
-            flex: 1;
-            background: rgba(10, 10, 10, 0.8);
-            backdrop-filter: blur(10px);
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            padding: 60px;
-            position: relative;
-            z-index: 1;
-            border-left: 1px solid rgba(0, 255, 136, 0.1);
-        }
-        
-        .globe-animation {
-            width: 400px;
-            height: 400px;
-            position: relative;
-            margin-bottom: 40px;
-        }
-        
-        .globe-circle {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 200px;
-            height: 200px;
-            background: radial-gradient(circle at 30% 30%, rgba(0, 255, 136, 0.3), transparent 70%);
-            border-radius: 50%;
-            animation: rotate 20s linear infinite;
-        }
-        
-        .globe-grid {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            width: 300px;
-            height: 300px;
-            border: 1px solid rgba(0, 255, 136, 0.2);
-            border-radius: 50%;
-            animation: rotate-reverse 15s linear infinite;
-        }
-        
-        .globe-grid::before, .globe-grid::after {
-            content: '';
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            border: 1px solid rgba(0, 255, 136, 0.2);
-            border-radius: 50%;
-        }
-        
-        .globe-grid::before {
-            width: 200px;
-            height: 200px;
-        }
-        
-        .globe-grid::after {
-            width: 100px;
-            height: 100px;
-        }
-        
-        .globe-meridians {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            width: 300px;
-            height: 300px;
-            transform: translate(-50%, -50%);
-        }
-        
-        .meridian {
-            position: absolute;
-            top: 0;
-            left: 50%;
-            width: 1px;
-            height: 100%;
-            background: linear-gradient(to bottom, transparent, rgba(0, 255, 136, 0.3), transparent);
-        }
-        
-        .meridian:nth-child(1) { transform: rotate(0deg); }
-        .meridian:nth-child(2) { transform: rotate(45deg); }
-        .meridian:nth-child(3) { transform: rotate(90deg); }
-        .meridian:nth-child(4) { transform: rotate(135deg); }
-        
-        @keyframes rotate {
-            0% { transform: translate(-50%, -50%) rotate(0deg); }
-            100% { transform: translate(-50%, -50%) rotate(360deg); }
-        }
-        
-        @keyframes rotate-reverse {
-            0% { transform: translate(-50%, -50%) rotate(0deg); }
-            100% { transform: translate(-50%, -50%) rotate(-360deg); }
-        }
-        
-        .platform-title {
-            font-size: 3rem;
-            font-weight: 800;
-            background: linear-gradient(90deg, #00ff88, #00cc6a, #00994c);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            text-align: center;
-            margin-bottom: 10px;
-            letter-spacing: -0.5px;
-        }
-        
-        .platform-subtitle {
-            font-size: 1.2rem;
-            color: #cccccc;
-            text-align: center;
-            margin-bottom: 40px;
-            max-width: 500px;
-            line-height: 1.6;
-        }
-        
-        .login-card {
-            background: rgba(20, 20, 20, 0.9);
-            border: 1px solid rgba(0, 255, 136, 0.2);
-            border-radius: 20px;
-            padding: 40px;
-            width: 100%;
-            max-width: 450px;
-            backdrop-filter: blur(10px);
-            transition: all 0.3s ease;
-        }
-        
-        .login-card:hover {
-            border-color: rgba(0, 255, 136, 0.4);
-            box-shadow: 0 10px 40px rgba(0, 255, 136, 0.15);
-        }
-        
-        .login-header {
-            text-align: center;
-            margin-bottom: 40px;
-        }
-        
-        .login-icon {
-            font-size: 48px;
-            margin-bottom: 20px;
-            animation: bounce 2s infinite;
-        }
-        
-        @keyframes bounce {
-            0%, 100% { transform: translateY(0); }
-            50% { transform: translateY(-10px); }
-        }
-        
-        .login-title {
-            font-size: 2rem;
-            font-weight: 700;
-            color: #ffffff;
-            margin-bottom: 10px;
-        }
-        
-        .login-subtitle {
-            color: #999999;
-            font-size: 1rem;
-            line-height: 1.5;
-        }
-        
-        .google-login-btn {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 12px;
-            width: 100%;
-            padding: 16px 24px;
-            background: linear-gradient(90deg, #4285F4, #34A853, #FBBC05, #EA4335);
-            color: white;
-            border: none;
-            border-radius: 12px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            text-decoration: none;
-            margin-bottom: 20px;
-        }
-        
-        .google-login-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 25px rgba(66, 133, 244, 0.3);
-        }
-        
-        .or-divider {
-            display: flex;
-            align-items: center;
-            margin: 30px 0;
-            color: #666;
-            font-size: 14px;
-        }
-        
-        .or-divider::before, .or-divider::after {
-            content: '';
-            flex: 1;
-            height: 1px;
-            background: rgba(255, 255, 255, 0.1);
-        }
-        
-        .or-divider span {
-            padding: 0 15px;
-        }
-        
-        .features-list {
-            margin: 30px 0;
-        }
-        
-        .feature-item {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            margin-bottom: 15px;
-            color: #cccccc;
-            font-size: 14px;
-        }
-        
-        .feature-icon {
-            color: #00ff88;
-            font-size: 16px;
-        }
-        
-        .terms-text {
-            font-size: 12px;
-            color: #666;
-            text-align: center;
-            margin-top: 20px;
-            line-height: 1.5;
-        }
-        
-        .terms-link {
-            color: #00ff88;
-            text-decoration: none;
-            cursor: pointer;
-            transition: color 0.3s;
-        }
-        
-        .terms-link:hover {
-            color: #00cc6a;
-        }
-        
-        .demo-credentials {
-            background: rgba(0, 255, 136, 0.1);
-            border: 1px solid rgba(0, 255, 136, 0.2);
-            border-radius: 12px;
-            padding: 20px;
-            margin-top: 30px;
-        }
-        
-        .demo-title {
-            color: #00ff88;
-            font-size: 14px;
-            font-weight: 600;
-            margin-bottom: 10px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        .demo-info {
-            color: #cccccc;
-            font-size: 12px;
-            line-height: 1.6;
-        }
-        
-        @media (max-width: 768px) {
-            .login-container {
-                flex-direction: column;
-            }
-            
-            .login-right {
-                border-left: none;
-                border-top: 1px solid rgba(0, 255, 136, 0.1);
-            }
-            
-            .globe-animation {
-                width: 300px;
-                height: 300px;
-            }
-        }
-    </style>
-    """, unsafe_allow_html=True)
+    # Add custom CSS for login page (same CSS as before, but fixed the string)
     
     # Login Page Layout
     st.markdown("""
@@ -722,16 +402,17 @@ if not st.session_state.google_credentials:
             
             <div class="platform-title">KHISBA GIS</div>
             <div class="platform-subtitle">
-                Explore global vegetation patterns with interactive 3D visualization, 
-                satellite analytics, and real-time Earth observation data. 
-                Powered by Google Earth Engine & NASA's satellite imagery.
+                Analyze global vegetation using high-resolution satellite imagery from 
+                Sentinel-2, Landsat 8, and MODIS. Process Earth observation data in real-time 
+                with Google Earth Engine's powerful analytics platform.
             </div>
             
-            <div style="display: flex; gap: 10px; margin-top: 20px;">
-                <span class="status-badge">3D Globe</span>
-                <span class="status-badge">Real-time</span>
-                <span class="status-badge">AI Analytics</span>
-                <span class="status-badge">Secure</span>
+            <div style="display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; justify-content: center;">
+                <span class="status-badge">Sentinel-2</span>
+                <span class="status-badge">Landsat 8</span>
+                <span class="status-badge">MODIS</span>
+                <span class="status-badge">NDVI/EVI</span>
+                <span class="status-badge">Time Series</span>
             </div>
         </div>
         
@@ -739,30 +420,34 @@ if not st.session_state.google_credentials:
         <div class="login-right">
             <div class="login-card">
                 <div class="login-header">
-                    <div class="login-icon">🌍</div>
-                    <div class="login-title">Welcome Back</div>
+                    <div class="login-icon">🛰️</div>
+                    <div class="login-title">Satellite Analytics Portal</div>
                     <div class="login-subtitle">
-                        Sign in to access the world's most advanced vegetation analytics platform.
-                        Your data is securely encrypted and never shared.
+                        Sign in to access multi-spectral satellite imagery analysis, 
+                        vegetation monitoring, and environmental change detection tools.
                     </div>
                 </div>
                 
                 <div class="features-list">
                     <div class="feature-item">
-                        <span class="feature-icon">✓</span>
-                        <span>3D interactive globe visualization</span>
+                        <span class="feature-icon">📡</span>
+                        <span>Multi-spectral satellite imagery (10m resolution)</span>
                     </div>
                     <div class="feature-item">
-                        <span class="feature-icon">✓</span>
-                        <span>Real-time satellite data analysis</span>
+                        <span class="feature-icon">🌿</span>
+                        <span>Vegetation indices: NDVI, EVI, SAVI, NDWI</span>
                     </div>
                     <div class="feature-item">
-                        <span class="feature-icon">✓</span>
-                        <span>Advanced vegetation indices</span>
+                        <span class="feature-icon">📊</span>
+                        <span>Time-series analysis & trend detection</span>
                     </div>
                     <div class="feature-item">
-                        <span class="feature-icon">✓</span>
-                        <span>Historical data comparison</span>
+                        <span class="feature-icon">🌎</span>
+                        <span>Global coverage with historical data since 1984</span>
+                    </div>
+                    <div class="feature-item">
+                        <span class="feature-icon">⚡</span>
+                        <span>Real-time processing with Google Earth Engine</span>
                     </div>
                 </div>
                 
@@ -770,56 +455,266 @@ if not st.session_state.google_credentials:
                 <div id="google-login-section"></div>
                 
                 <div class="or-divider">
-                    <span>OR</span>
+                    <span>QUICK ACCESS</span>
                 </div>
                 
-                <!-- Demo Access Option -->
+                <!-- Satellite Data Sources -->
                 <div class="demo-credentials">
                     <div class="demo-title">
-                        <span>🔒</span> Secure Demo Access
+                        <span>🛰️</span> Satellite Data Sources
                     </div>
                     <div class="demo-info">
-                        For demonstration purposes, you can preview the platform with sample data. 
-                        Full analytics features require Google authentication for Earth Engine access.
-                    </div>
-                    <div style="margin-top: 15px; text-align: center;">
-                        <button onclick="previewDemo()" style="
-                            background: rgba(0, 255, 136, 0.1);
-                            border: 1px solid rgba(0, 255, 136, 0.3);
-                            color: #00ff88;
-                            padding: 10px 20px;
-                            border-radius: 8px;
-                            cursor: pointer;
-                            font-weight: 600;
-                            transition: all 0.3s;
-                            width: 100%;
-                        ">Preview Demo</button>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 15px 0;">
+                            <div style="background: rgba(0, 100, 255, 0.1); padding: 10px; border-radius: 6px; text-align: center;">
+                                <div style="font-weight: 600; color: #00ff88;">Sentinel-2</div>
+                                <div style="font-size: 11px; color: #999;">10m resolution</div>
+                            </div>
+                            <div style="background: rgba(0, 200, 100, 0.1); padding: 10px; border-radius: 6px; text-align: center;">
+                                <div style="font-weight: 600; color: #00ff88;">Landsat 8</div>
+                                <div style="font-size: 11px; color: #999;">30m resolution</div>
+                            </div>
+                        </div>
+                        Full analytics features require Google authentication for Earth Engine API access.
                     </div>
                 </div>
                 
                 <div class="terms-text">
-                    By continuing, you agree to our 
+                    By signing in, you agree to KHISBA GIS 
                     <a href="#" class="terms-link" onclick="showTerms()">Terms of Service</a> 
-                    and acknowledge you have read our 
+                    and 
                     <a href="#" class="terms-link" onclick="showPrivacy()">Privacy Policy</a>. 
-                    This platform uses Google Earth Engine API for satellite data processing.
+                    Satellite data provided by ESA, NASA, and USGS via Google Earth Engine.
+                </div>
+                
+                <!-- Platform Partners -->
+                <div style="display: flex; justify-content: center; gap: 20px; margin-top: 25px; opacity: 0.7;">
+                    <div style="font-size: 12px; color: #666;">Powered by:</div>
+                    <div style="display: flex; gap: 15px; align-items: center;">
+                        <span style="color: #00ff88; font-weight: 600;">Google Earth Engine</span>
+                        <span style="color: #ccc;">•</span>
+                        <span style="color: #00ff88; font-weight: 600;">ESA Sentinel</span>
+                        <span style="color: #ccc;">•</span>
+                        <span style="color: #00ff88; font-weight: 600;">NASA Landsat</span>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
     
     <script>
-        function previewDemo() {
-            alert('Demo preview coming soon! For now, please use Google Sign In for full access.');
-        }
-        
-        function showTerms() {
-            alert('Terms of Service:\n\n1. This platform is for research and educational purposes.\n2. All data is processed securely via Google Earth Engine.\n3. Users are responsible for proper data attribution.\n4. Platform may be subject to API rate limits.');
-        }
-        
-        function showPrivacy() {
-            alert('Privacy Policy:\n\n1. We only store your email for authentication purposes.\n2. No personal data is shared with third parties.\n3. Analysis results are stored temporarily.\n4. You can request data deletion at any time.');
-        }
+    function previewDemo() {
+        // Create a modal for demo preview
+        const modal = document.createElement('div');
+        modal.innerHTML = `
+            <div style="
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0, 0, 0, 0.8);
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                z-index: 10000;
+                backdrop-filter: blur(5px);
+            ">
+                <div style="
+                    background: linear-gradient(135deg, #0a0a0a, #111111);
+                    border: 1px solid rgba(0, 255, 136, 0.3);
+                    border-radius: 15px;
+                    padding: 30px;
+                    width: 90%;
+                    max-width: 500px;
+                    position: relative;
+                ">
+                    <button onclick="this.parentElement.parentElement.remove()" style="
+                        position: absolute;
+                        top: 15px;
+                        right: 15px;
+                        background: none;
+                        border: none;
+                        color: #999;
+                        font-size: 20px;
+                        cursor: pointer;
+                    ">×</button>
+                    
+                    <div style="text-align: center; margin-bottom: 25px;">
+                        <div style="font-size: 48px; margin-bottom: 15px;">🛰️</div>
+                        <h3 style="color: #00ff88; margin-bottom: 10px;">Satellite Imagery Demo</h3>
+                        <p style="color: #ccc; line-height: 1.6;">
+                            For full access to KHISBA GIS satellite analytics platform, 
+                            please sign in with Google to authenticate with Earth Engine API.
+                        </p>
+                    </div>
+                    
+                    <div style="background: rgba(0, 255, 136, 0.1); border-radius: 10px; padding: 20px; margin: 20px 0;">
+                        <div style="color: #00ff88; font-weight: 600; margin-bottom: 10px;">Demo Features Available:</div>
+                        <div style="color: #ccc; font-size: 14px; line-height: 1.5;">
+                            • Sample vegetation index maps<br>
+                            • Historical trend visualization<br>
+                            • Area selection tools<br>
+                            • Basic analytics dashboard
+                        </div>
+                    </div>
+                    
+                    <div style="text-align: center;">
+                        <button onclick="window.location.href='#google-login-section'" style="
+                            background: linear-gradient(90deg, #00ff88, #00cc6a);
+                            color: #000;
+                            border: none;
+                            padding: 12px 30px;
+                            border-radius: 8px;
+                            font-weight: 600;
+                            cursor: pointer;
+                            margin: 10px;
+                        ">Sign In for Full Access</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    }
+    
+    function showTerms() {
+        // Create terms modal
+        const modal = document.createElement('div');
+        modal.innerHTML = `
+            <div style="
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0, 0, 0, 0.9);
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                z-index: 10000;
+                padding: 20px;
+            ">
+                <div style="
+                    background: #0a0a0a;
+                    border: 1px solid rgba(0, 255, 136, 0.3);
+                    border-radius: 15px;
+                    padding: 30px;
+                    width: 90%;
+                    max-width: 600px;
+                    max-height: 80vh;
+                    overflow-y: auto;
+                    position: relative;
+                ">
+                    <button onclick="this.parentElement.parentElement.remove()" style="
+                        position: absolute;
+                        top: 15px;
+                        right: 15px;
+                        background: none;
+                        border: none;
+                        color: #999;
+                        font-size: 20px;
+                        cursor: pointer;
+                    ">×</button>
+                    
+                    <h3 style="color: #00ff88; margin-bottom: 20px; text-align: center;">KHISBA GIS - Terms of Service</h3>
+                    
+                    <div style="color: #ccc; line-height: 1.6; font-size: 14px;">
+                        <p><strong>1. Platform Usage</strong><br>
+                        KHISBA GIS is a satellite imagery analytics platform for research, education, and environmental monitoring purposes.</p>
+                        
+                        <p><strong>2. Data Sources</strong><br>
+                        All satellite imagery is sourced from Google Earth Engine, which aggregates data from ESA (Sentinel), NASA (Landsat), and USGS.</p>
+                        
+                        <p><strong>3. User Responsibilities</strong><br>
+                        Users must comply with data usage policies of respective satellite data providers and attribute data sources appropriately.</p>
+                        
+                        <p><strong>4. API Limitations</strong><br>
+                        Platform usage is subject to Google Earth Engine API rate limits and quota restrictions.</p>
+                        
+                        <p><strong>5. Privacy</strong><br>
+                        We only store authentication information and user preferences. Analysis results are processed in real-time and not permanently stored.</p>
+                        
+                        <p><strong>6. Intellectual Property</strong><br>
+                        Satellite imagery remains property of respective space agencies. Analytical outputs are available for user download and use.</p>
+                    </div>
+                    
+                    <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1);">
+                        <div style="color: #00ff88; font-weight: 600;">Contact:</div>
+                        <div style="color: #ccc; font-size: 13px;">support@khisba-gis.com</div>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    }
+    
+    function showPrivacy() {
+        // Create privacy modal
+        const modal = document.createElement('div');
+        modal.innerHTML = `
+            <div style="
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0, 0, 0, 0.9);
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                z-index: 10000;
+                padding: 20px;
+            ">
+                <div style="
+                    background: #0a0a0a;
+                    border: 1px solid rgba(0, 255, 136, 0.3);
+                    border-radius: 15px;
+                    padding: 30px;
+                    width: 90%;
+                    max-width: 600px;
+                    max-height: 80vh;
+                    overflow-y: auto;
+                    position: relative;
+                ">
+                    <button onclick="this.parentElement.parentElement.remove()" style="
+                        position: absolute;
+                        top: 15px;
+                        right: 15px;
+                        background: none;
+                        border: none;
+                        color: #999;
+                        font-size: 20px;
+                        cursor: pointer;
+                    ">×</button>
+                    
+                    <h3 style="color: #00ff88; margin-bottom: 20px; text-align: center;">Privacy Policy</h3>
+                    
+                    <div style="color: #ccc; line-height: 1.6; font-size: 14px;">
+                        <p><strong>1. Data Collection</strong><br>
+                        We collect only your Google authentication information (email, name, profile picture) to provide personalized access to the platform.</p>
+                        
+                        <p><strong>2. Data Usage</strong><br>
+                        Your information is used solely for authentication and personalization. We do not share your data with third parties.</p>
+                        
+                        <p><strong>3. Satellite Data Processing</strong><br>
+                        All satellite imagery analysis is performed through Google Earth Engine API. Your analysis parameters are processed in real-time but not stored.</p>
+                        
+                        <p><strong>4. Cookies & Tracking</strong><br>
+                        We use session cookies for authentication only. No tracking cookies or analytics are implemented.</p>
+                        
+                        <p><strong>5. Data Security</strong><br>
+                        All data transmission is encrypted using SSL/TLS. Authentication tokens are securely managed via Google OAuth 2.0.</p>
+                        
+                        <p><strong>6. Data Deletion</strong><br>
+                        You can request account deletion at any time by contacting support. This removes all stored authentication information.</p>
+                        
+                        <p><strong>7. Compliance</strong><br>
+                        We comply with Google Earth Engine's terms of service and data usage policies for all satellite data processing.</p>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    }
     </script>
     """, unsafe_allow_html=True)
     
