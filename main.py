@@ -354,6 +354,8 @@ if 'selected_area_name' not in st.session_state:
 
 # ==================== GOOGLE AUTHENTICATION CHECK ====================
 
+# ==================== GOOGLE AUTHENTICATION CHECK ====================
+
 google_config = load_google_config()
 
 # Handle OAuth callback
@@ -378,75 +380,594 @@ if code and not st.session_state.google_credentials and google_config:
             st.query_params.clear()
 
 # Show login page if not authenticated
-# Replace the login section with this cleaner version:
-
-# Show login page if not authenticated
-# Show login page if not authenticated
 if not st.session_state.google_credentials:
+    # Add custom CSS for login page
     st.markdown("""
-    <div class="main-container">
-        <div class="content-container" style="max-width: 500px; margin: 100px auto;">
-            <div class="card">
-                <div style="text-align: center; margin-bottom: 20px;">
-                    <img src="data:image/png;base64,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" 
-                         alt="KHISBA GIS Logo" 
-                         style="width: 60px; height: 60px; margin: 0 auto 20px; display: block; border-radius: 8px;">
-                    <h1 style="margin: 0 0 8px 0; text-align: center;">🌍 KHISBA GIS</h1>
-                    <p style="color: #999999; text-align: center; margin: 0 0 25px 0;">Interactive 3D Global Vegetation Analytics</p>
+    <style>
+        /* Login Page Specific Styles */
+        .login-container {
+            display: flex;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #000000 0%, #0a0a0a 50%, #001a00 100%);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .login-container::before {
+            content: '';
+            position: absolute;
+            width: 300%;
+            height: 300%;
+            background: radial-gradient(circle, rgba(0, 255, 136, 0.1) 0%, transparent 70%);
+            animation: pulse 15s infinite linear;
+            z-index: 0;
+        }
+        
+        @keyframes pulse {
+            0% { transform: translate(0, 0) rotate(0deg); }
+            100% { transform: translate(-50%, -50%) rotate(360deg); }
+        }
+        
+        .login-left {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 60px 40px;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .login-right {
+            flex: 1;
+            background: rgba(10, 10, 10, 0.8);
+            backdrop-filter: blur(10px);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            padding: 60px;
+            position: relative;
+            z-index: 1;
+            border-left: 1px solid rgba(0, 255, 136, 0.1);
+        }
+        
+        .globe-animation {
+            width: 400px;
+            height: 400px;
+            position: relative;
+            margin-bottom: 40px;
+        }
+        
+        .globe-circle {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 200px;
+            height: 200px;
+            background: radial-gradient(circle at 30% 30%, rgba(0, 255, 136, 0.3), transparent 70%);
+            border-radius: 50%;
+            animation: rotate 20s linear infinite;
+        }
+        
+        .globe-grid {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 300px;
+            height: 300px;
+            border: 1px solid rgba(0, 255, 136, 0.2);
+            border-radius: 50%;
+            animation: rotate-reverse 15s linear infinite;
+        }
+        
+        .globe-grid::before, .globe-grid::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            border: 1px solid rgba(0, 255, 136, 0.2);
+            border-radius: 50%;
+        }
+        
+        .globe-grid::before {
+            width: 200px;
+            height: 200px;
+        }
+        
+        .globe-grid::after {
+            width: 100px;
+            height: 100px;
+        }
+        
+        .globe-meridians {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 300px;
+            height: 300px;
+            transform: translate(-50%, -50%);
+        }
+        
+        .meridian {
+            position: absolute;
+            top: 0;
+            left: 50%;
+            width: 1px;
+            height: 100%;
+            background: linear-gradient(to bottom, transparent, rgba(0, 255, 136, 0.3), transparent);
+        }
+        
+        .meridian:nth-child(1) { transform: rotate(0deg); }
+        .meridian:nth-child(2) { transform: rotate(45deg); }
+        .meridian:nth-child(3) { transform: rotate(90deg); }
+        .meridian:nth-child(4) { transform: rotate(135deg); }
+        
+        @keyframes rotate {
+            0% { transform: translate(-50%, -50%) rotate(0deg); }
+            100% { transform: translate(-50%, -50%) rotate(360deg); }
+        }
+        
+        @keyframes rotate-reverse {
+            0% { transform: translate(-50%, -50%) rotate(0deg); }
+            100% { transform: translate(-50%, -50%) rotate(-360deg); }
+        }
+        
+        .platform-title {
+            font-size: 3rem;
+            font-weight: 800;
+            background: linear-gradient(90deg, #00ff88, #00cc6a, #00994c);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            text-align: center;
+            margin-bottom: 10px;
+            letter-spacing: -0.5px;
+        }
+        
+        .platform-subtitle {
+            font-size: 1.2rem;
+            color: #cccccc;
+            text-align: center;
+            margin-bottom: 40px;
+            max-width: 500px;
+            line-height: 1.6;
+        }
+        
+        .login-card {
+            background: rgba(20, 20, 20, 0.9);
+            border: 1px solid rgba(0, 255, 136, 0.2);
+            border-radius: 20px;
+            padding: 40px;
+            width: 100%;
+            max-width: 450px;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+        
+        .login-card:hover {
+            border-color: rgba(0, 255, 136, 0.4);
+            box-shadow: 0 10px 40px rgba(0, 255, 136, 0.15);
+        }
+        
+        .login-header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        
+        .login-icon {
+            font-size: 48px;
+            margin-bottom: 20px;
+            animation: bounce 2s infinite;
+        }
+        
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+        
+        .login-title {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #ffffff;
+            margin-bottom: 10px;
+        }
+        
+        .login-subtitle {
+            color: #999999;
+            font-size: 1rem;
+            line-height: 1.5;
+        }
+        
+        .google-login-btn {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            width: 100%;
+            padding: 16px 24px;
+            background: linear-gradient(90deg, #4285F4, #34A853, #FBBC05, #EA4335);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            margin-bottom: 20px;
+        }
+        
+        .google-login-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(66, 133, 244, 0.3);
+        }
+        
+        .or-divider {
+            display: flex;
+            align-items: center;
+            margin: 30px 0;
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .or-divider::before, .or-divider::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: rgba(255, 255, 255, 0.1);
+        }
+        
+        .or-divider span {
+            padding: 0 15px;
+        }
+        
+        .features-list {
+            margin: 30px 0;
+        }
+        
+        .feature-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 15px;
+            color: #cccccc;
+            font-size: 14px;
+        }
+        
+        .feature-icon {
+            color: #00ff88;
+            font-size: 16px;
+        }
+        
+        .terms-text {
+            font-size: 12px;
+            color: #666;
+            text-align: center;
+            margin-top: 20px;
+            line-height: 1.5;
+        }
+        
+        .terms-link {
+            color: #00ff88;
+            text-decoration: none;
+            cursor: pointer;
+            transition: color 0.3s;
+        }
+        
+        .terms-link:hover {
+            color: #00cc6a;
+        }
+        
+        .demo-credentials {
+            background: rgba(0, 255, 136, 0.1);
+            border: 1px solid rgba(0, 255, 136, 0.2);
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 30px;
+        }
+        
+        .demo-title {
+            color: #00ff88;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .demo-info {
+            color: #cccccc;
+            font-size: 12px;
+            line-height: 1.6;
+        }
+        
+        @media (max-width: 768px) {
+            .login-container {
+                flex-direction: column;
+            }
+            
+            .login-right {
+                border-left: none;
+                border-top: 1px solid rgba(0, 255, 136, 0.1);
+            }
+            
+            .globe-animation {
+                width: 300px;
+                height: 300px;
+            }
+        }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    # Login Page Layout
+    st.markdown("""
+    <div class="login-container">
+        <!-- Left Section: Visual Animation & Branding -->
+        <div class="login-left">
+            <div class="globe-animation">
+                <div class="globe-circle"></div>
+                <div class="globe-grid"></div>
+                <div class="globe-meridians">
+                    <div class="meridian"></div>
+                    <div class="meridian"></div>
+                    <div class="meridian"></div>
+                    <div class="meridian"></div>
+                </div>
+            </div>
+            
+            <div class="platform-title">KHISBA GIS</div>
+            <div class="platform-subtitle">
+                Explore global vegetation patterns with interactive 3D visualization, 
+                satellite analytics, and real-time Earth observation data. 
+                Powered by Google Earth Engine & NASA's satellite imagery.
+            </div>
+            
+            <div style="display: flex; gap: 10px; margin-top: 20px;">
+                <span class="status-badge">3D Globe</span>
+                <span class="status-badge">Real-time</span>
+                <span class="status-badge">AI Analytics</span>
+                <span class="status-badge">Secure</span>
+            </div>
+        </div>
+        
+        <!-- Right Section: Login Card -->
+        <div class="login-right">
+            <div class="login-card">
+                <div class="login-header">
+                    <div class="login-icon">🌍</div>
+                    <div class="login-title">Welcome Back</div>
+                    <div class="login-subtitle">
+                        Sign in to access the world's most advanced vegetation analytics platform.
+                        Your data is securely encrypted and never shared.
+                    </div>
                 </div>
                 
-                <div style="text-align: center; padding: 20px 0; border-top: 1px solid #222222;">
-                    <p style="color: #00ff88; font-weight: 600; margin-bottom: 20px;">Sign in with Google to access the platform</p>
+                <div class="features-list">
+                    <div class="feature-item">
+                        <span class="feature-icon">✓</span>
+                        <span>3D interactive globe visualization</span>
+                    </div>
+                    <div class="feature-item">
+                        <span class="feature-icon">✓</span>
+                        <span>Real-time satellite data analysis</span>
+                    </div>
+                    <div class="feature-item">
+                        <span class="feature-icon">✓</span>
+                        <span>Advanced vegetation indices</span>
+                    </div>
+                    <div class="feature-item">
+                        <span class="feature-icon">✓</span>
+                        <span>Historical data comparison</span>
+                    </div>
+                </div>
+                
+                <!-- Google Login Button -->
+                <div id="google-login-section"></div>
+                
+                <div class="or-divider">
+                    <span>OR</span>
+                </div>
+                
+                <!-- Demo Access Option -->
+                <div class="demo-credentials">
+                    <div class="demo-title">
+                        <span>🔒</span> Secure Demo Access
+                    </div>
+                    <div class="demo-info">
+                        For demonstration purposes, you can preview the platform with sample data. 
+                        Full analytics features require Google authentication for Earth Engine access.
+                    </div>
+                    <div style="margin-top: 15px; text-align: center;">
+                        <button onclick="previewDemo()" style="
+                            background: rgba(0, 255, 136, 0.1);
+                            border: 1px solid rgba(0, 255, 136, 0.3);
+                            color: #00ff88;
+                            padding: 10px 20px;
+                            border-radius: 8px;
+                            cursor: pointer;
+                            font-weight: 600;
+                            transition: all 0.3s;
+                            width: 100%;
+                        ">Preview Demo</button>
+                    </div>
+                </div>
+                
+                <div class="terms-text">
+                    By continuing, you agree to our 
+                    <a href="#" class="terms-link" onclick="showTerms()">Terms of Service</a> 
+                    and acknowledge you have read our 
+                    <a href="#" class="terms-link" onclick="showPrivacy()">Privacy Policy</a>. 
+                    This platform uses Google Earth Engine API for satellite data processing.
                 </div>
             </div>
         </div>
     </div>
+    
+    <script>
+        function previewDemo() {
+            alert('Demo preview coming soon! For now, please use Google Sign In for full access.');
+        }
+        
+        function showTerms() {
+            alert('Terms of Service:\n\n1. This platform is for research and educational purposes.\n2. All data is processed securely via Google Earth Engine.\n3. Users are responsible for proper data attribution.\n4. Platform may be subject to API rate limits.');
+        }
+        
+        function showPrivacy() {
+            alert('Privacy Policy:\n\n1. We only store your email for authentication purposes.\n2. No personal data is shared with third parties.\n3. Analysis results are stored temporarily.\n4. You can request data deletion at any time.');
+        }
+    </script>
     """, unsafe_allow_html=True)
     
-    # Login button in the center
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        if google_config:
-            try:
-                flow = create_google_flow(google_config)
-                auth_url, _ = flow.authorization_url(prompt='consent')
-                
-                # Create a nicer button using markdown
-                st.markdown(f"""
-                <div style="text-align: center;">
-                    <a href="{auth_url}" style="display: inline-flex; align-items: center; justify-content: center; 
-                    background: linear-gradient(90deg, #00ff88, #00cc6a); 
-                    color: #000000; 
-                    padding: 12px 24px; 
-                    border-radius: 8px; 
-                    text-decoration: none; 
-                    font-weight: 600; 
-                    font-size: 14px; 
-                    letter-spacing: 0.5px; 
-                    transition: all 0.3s ease;
-                    box-shadow: 0 4px 12px rgba(0, 255, 136, 0.2);
-                    gap: 8px;">
-                        <span>🔓</span> Login with Google
+    # Add Google Login Button with Interactive Features
+    if google_config:
+        try:
+            flow = create_google_flow(google_config)
+            auth_url, _ = flow.authorization_url(prompt='consent')
+            
+            # JavaScript for interactive login button
+            st.markdown(f"""
+            <script>
+                // Create interactive Google login button
+                const loginSection = document.getElementById('google-login-section');
+                loginSection.innerHTML = `
+                    <a href="{auth_url}" class="google-login-btn">
+                        <svg width="20" height="20" viewBox="0 0 24 24" style="filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));">
+                            <path fill="#ffffff" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                            <path fill="#ffffff" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                            <path fill="#ffffff" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                            <path fill="#ffffff" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                        </svg>
+                        Continue with Google
                     </a>
-                </div>
-                """, unsafe_allow_html=True)
+                    
+                    <div style="text-align: center; margin-top: 15px;">
+                        <div style="display: inline-flex; align-items: center; gap: 8px; color: #666; font-size: 12px;">
+                            <span>🔐</span>
+                            <span>Secured by Google OAuth 2.0</span>
+                        </div>
+                    </div>
+                `;
                 
-                # Terms and Privacy notice
-                st.markdown("""
-                <div style="text-align: center; margin-top: 25px; padding: 15px; background: rgba(0, 0, 0, 0.2); border-radius: 8px;">
-                    <p style="color: #999999; font-size: 12px; line-height: 1.4; margin: 0;">
-                        By logging in, you agree to our 
-                        <span style="color: #00ff88; cursor: pointer;" onclick="alert('Terms of Service will be shown here')">Terms of Service</span> 
-                        and 
-                        <span style="color: #00ff88; cursor: pointer;" onclick="alert('Privacy Policy will be shown here')">Privacy Policy</span>.
-                    </p>
-                </div>
-                """, unsafe_allow_html=True)
+                // Add click animation
+                const loginBtn = loginSection.querySelector('.google-login-btn');
+                loginBtn.addEventListener('click', function(e) {{
+                    // Add loading state
+                    this.innerHTML = `
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            <div style="width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.3); border-top: 2px solid white; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+                            <span>Connecting to Google...</span>
+                        </div>
+                    `;
+                    this.style.opacity = '0.8';
+                    this.style.pointerEvents = 'none';
+                    
+                    // Show processing message
+                    setTimeout(() => {{
+                        document.body.insertAdjacentHTML('beforeend', `
+                            <div style="position: fixed; top: 20px; right: 20px; background: rgba(0, 255, 136, 0.9); color: black; padding: 12px 20px; border-radius: 8px; z-index: 9999; animation: slideIn 0.3s ease;">
+                                <strong>✓</strong> Redirecting to Google authentication...
+                            </div>
+                        `);
+                    }}, 500);
+                }});
                 
-            except Exception as e:
-                st.error(f"Error creating auth flow: {e}")
-        else:
-            st.error("Google OAuth configuration not found")
+                // Add CSS for animations
+                const style = document.createElement('style');
+                style.textContent = `
+                    @keyframes spin {{
+                        0% {{ transform: rotate(0deg); }}
+                        100% {{ transform: rotate(360deg); }}
+                    }}
+                    @keyframes slideIn {{
+                        from {{ transform: translateX(100%); opacity: 0; }}
+                        to {{ transform: translateX(0); opacity: 1; }}
+                    }}
+                `;
+                document.head.appendChild(style);
+            </script>
+            """, unsafe_allow_html=True)
+            
+            # Add floating particles animation for background
+            st.markdown("""
+            <script>
+                // Create floating particles
+                function createParticles() {
+                    const container = document.querySelector('.login-container');
+                    const particleCount = 30;
+                    
+                    for (let i = 0; i < particleCount; i++) {
+                        const particle = document.createElement('div');
+                        particle.style.position = 'absolute';
+                        particle.style.width = Math.random() * 4 + 1 + 'px';
+                        particle.style.height = particle.style.width;
+                        particle.style.background = 'rgba(0, 255, 136, 0.2)';
+                        particle.style.borderRadius = '50%';
+                        particle.style.left = Math.random() * 100 + '%';
+                        particle.style.top = Math.random() * 100 + '%';
+                        particle.style.zIndex = '0';
+                        
+                        // Animation
+                        particle.style.animation = `float ${Math.random() * 20 + 10}s linear infinite`;
+                        particle.style.animationDelay = Math.random() * 5 + 's';
+                        
+                        container.appendChild(particle);
+                    }
+                }
+                
+                // Add CSS for particle animation
+                const particleStyle = document.createElement('style');
+                particleStyle.textContent = `
+                    @keyframes float {
+                        0%, 100% { 
+                            transform: translate(0, 0) rotate(0deg);
+                            opacity: 0.2;
+                        }
+                        25% { 
+                            transform: translate(20px, -20px) rotate(90deg);
+                            opacity: 0.4;
+                        }
+                        50% { 
+                            transform: translate(0, -40px) rotate(180deg);
+                            opacity: 0.2;
+                        }
+                        75% { 
+                            transform: translate(-20px, -20px) rotate(270deg);
+                            opacity: 0.4;
+                        }
+                    }
+                `;
+                document.head.appendChild(particleStyle);
+                
+                // Create particles when page loads
+                window.addEventListener('load', createParticles);
+            </script>
+            """, unsafe_allow_html=True)
+            
+        except Exception as e:
+            st.error(f"Error creating auth flow: {e}")
+    else:
+        st.markdown("""
+        <div style="text-align: center; padding: 40px; background: rgba(255, 0, 0, 0.1); border-radius: 12px; border: 1px solid rgba(255, 0, 0, 0.2);">
+            <div style="font-size: 48px; margin-bottom: 20px;">⚠️</div>
+            <h3 style="color: #ff4444; margin-bottom: 10px;">Configuration Required</h3>
+            <p style="color: #cccccc;">Google OAuth configuration not found. Please contact your administrator.</p>
+            <button onclick="window.location.reload()" style="
+                background: rgba(0, 255, 136, 0.1);
+                border: 1px solid rgba(0, 255, 136, 0.3);
+                color: #00ff88;
+                padding: 10px 20px;
+                border-radius: 8px;
+                cursor: pointer;
+                font-weight: 600;
+                margin-top: 20px;
+            ">Retry Connection</button>
+        </div>
+        """, unsafe_allow_html=True)
     
     st.stop()
 # ==================== MAIN APPLICATION (After Authentication) ====================
