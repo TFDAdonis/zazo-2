@@ -354,6 +354,8 @@ if 'selected_area_name' not in st.session_state:
 
 # ==================== GOOGLE AUTHENTICATION CHECK ====================
 
+# ==================== GOOGLE AUTHENTICATION CHECK ====================
+
 google_config = load_google_config()
 
 # Handle OAuth callback
@@ -388,7 +390,7 @@ if not st.session_state.google_credentials:
             display: flex;
             align-items: center;
             justify-content: center;
-            background: linear-gradient(135deg, #000000 0%, #0a1929 100%);
+            background: linear-gradient(135deg, #000000 0%, #001a00 100%);
             padding: 20px;
             position: relative;
             overflow: hidden;
@@ -490,7 +492,7 @@ if not st.session_state.google_credentials:
         .login-subtitle {
             color: #888888;
             font-size: 1rem;
-            margin-bottom: 40px;
+            margin-bottom: 20px;
             letter-spacing: 1px;
             font-weight: 400;
         }
@@ -528,7 +530,7 @@ if not st.session_state.google_credentials:
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 15px;
-            margin-top: 40px;
+            margin-top: 30px;
         }
         
         .feature-item {
@@ -559,7 +561,7 @@ if not st.session_state.google_credentials:
         }
         
         .login-footer {
-            margin-top: 30px;
+            margin-top: 25px;
             padding-top: 20px;
             border-top: 1px solid rgba(255, 255, 255, 0.1);
             color: #666666;
@@ -576,13 +578,13 @@ if not st.session_state.google_credentials:
             border-radius: 20px;
             font-size: 0.8rem;
             font-weight: 500;
-            margin-top: 15px;
+            margin-top: 10px;
             border: 1px solid rgba(0, 255, 136, 0.2);
         }
         
         .divider {
             position: relative;
-            margin: 30px 0;
+            margin: 25px 0;
             text-align: center;
         }
         
@@ -610,6 +612,21 @@ if not st.session_state.google_credentials:
             letter-spacing: 2px;
             text-transform: uppercase;
         }
+        
+        .platform-tagline {
+            background: rgba(0, 255, 136, 0.05);
+            border: 1px solid rgba(0, 255, 136, 0.1);
+            border-radius: 12px;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        
+        .platform-tagline p {
+            color: #00ff88;
+            font-size: 0.9rem;
+            margin: 0;
+            font-weight: 500;
+        }
     </style>
     """, unsafe_allow_html=True)
     
@@ -624,26 +641,21 @@ if not st.session_state.google_credentials:
             <h1 class="login-title">KHISBA GIS</h1>
             <p class="login-subtitle">3D Global Vegetation Analytics Platform</p>
             
+            <!-- Platform Description -->
+            <div class="platform-tagline">
+                <p>🔐 Enterprise-grade platform for vegetation monitoring, deforestation detection, and environmental analytics</p>
+            </div>
+            
             <!-- Description -->
-            <div style="text-align: center; margin-bottom: 30px;">
-                <p style="color: #cccccc; font-size: 1.1rem; margin-bottom: 20px; line-height: 1.6;">
-                    Advanced geospatial intelligence platform for<br>
-                    real-time satellite imagery analysis and 3D visualization
+            <div style="text-align: center; margin-bottom: 25px;">
+                <p style="color: #cccccc; font-size: 1rem; margin: 0; line-height: 1.6;">
+                    Advanced geospatial intelligence for real-time satellite imagery analysis and 3D visualization
                 </p>
             </div>
             
             <!-- Divider -->
             <div class="divider">
                 <span class="divider-text">Secure Access Required</span>
-            </div>
-            
-            <!-- Platform Description -->
-            <div style="background: rgba(0, 255, 136, 0.05); border: 1px solid rgba(0, 255, 136, 0.1); 
-                        border-radius: 12px; padding: 20px; margin-bottom: 30px;">
-                <p style="color: #00ff88; font-size: 0.9rem; margin: 0; font-weight: 500;">
-                    🔐 Enterprise-grade platform for vegetation monitoring, 
-                    deforestation detection, and environmental analytics
-                </p>
             </div>
     """, unsafe_allow_html=True)
     
@@ -661,7 +673,7 @@ if not st.session_state.google_credentials:
                     <path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
                     <path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
                 </svg>
-                Continue with Google
+                Sign in with Google
             </a>
             """, unsafe_allow_html=True)
             
@@ -692,7 +704,7 @@ if not st.session_state.google_credentials:
                 </p>
                 <div class="security-badge">
                     <span>🔒</span>
-                    <span>256-bit SSL Encryption • GDPR Compliant</span>
+                    <span>Enterprise Security • GDPR Compliant</span>
                 </div>
             </div>
             """, unsafe_allow_html=True)
