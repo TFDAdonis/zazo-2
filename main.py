@@ -271,7 +271,7 @@ st.markdown("""
     footer {visibility: hidden;}
     header {visibility: hidden;}
     
-    /* Login Page Styling */
+    /* Login Page Styling - Updated to match second code */
     .login-container {
         display: flex;
         flex-direction: column;
@@ -440,54 +440,6 @@ st.markdown("""
     .google-btn:active {
         transform: translateY(-2px);
     }
-
-    .dev-mode-link {
-        color: var(--text-gray);
-        font-size: 0.8rem;
-        letter-spacing: 1px;
-        text-transform: uppercase;
-        background: none;
-        border: none;
-        padding: 10px;
-        cursor: pointer;
-        transition: all 0.3s ease;
-        opacity: 0.6;
-        font-family: inherit;
-    }
-
-    .dev-mode-link:hover {
-        color: white;
-        opacity: 1;
-        letter-spacing: 2px;
-    }
-    
-    /* Center container for dashboard */
-    .center-container {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        padding: 20px;
-    }
-    
-    .dashboard-title {
-        text-align: center;
-        margin-bottom: 30px;
-    }
-    
-    /* Compact header styling */
-    .compact-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 20px;
-    }
-    
-    .section-divider {
-        height: 1px;
-        background: linear-gradient(90deg, transparent, var(--border-gray), transparent);
-        margin: 30px 0;
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -501,7 +453,7 @@ def auto_initialize_earth_engine():
             "project_id": "citric-hawk-457513-i6",
             "private_key_id": "8984179a69969591194d8f8097e48cd9789f5ea2",
             "private_key": """-----BEGIN PRIVATE KEY-----
-MIIEvQIBADANBgkqhkiGw0BAQEFAASCBKcwggSjAgEAAoIBAQDFQOtXKWE+7mEY
+MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDFQOtXKWE+7mEY
 JUTNzx3h+QvvDCvZ2B6XZTofknuAFPW2LqAzZustznJJFkCmO3Nutct+W/iDQCG0
 1DjOQcbcr/jWr+mnRLVOkUkQc/kzZ8zaMQqU8HpXjS1mdhpsrbUaRKoEgfo3I3Bp
 dFcJ/caC7TSr8VkGnZcPEZyXVsj8dLSEzomdkX+mDlJlgCrNfu3Knu+If5lXh3Me
@@ -595,6 +547,62 @@ if code and not st.session_state.google_credentials and google_config:
             st.error(f"Authentication failed: {e}")
             st.query_params.clear()
 
+# ==================== LOGIN PAGE ====================
+
+# Show login page if not authenticated
+if not st.session_state.google_credentials:
+    # Simple login page with the new design but original functionality
+    import random
+    
+    # Add particles for background effect
+    for i in range(10):
+        st.markdown(f'<div class="particle" style="width:{random.randint(2,5)}px; height:{random.randint(2,5)}px; top:{random.randint(0,100)}%; left:{random.randint(0,100)}%; animation-delay:{random.random()*5}s;"></div>', unsafe_allow_html=True)
+    
+    st.markdown('<div class="login-container">', unsafe_allow_html=True)
+    st.markdown('<div class="login-card">', unsafe_allow_html=True)
+    st.markdown('<div class="login-title">Khisba</div>', unsafe_allow_html=True)
+    st.markdown('<div class="login-subtitle">Planetary Intelligence. 3D Insight.</div>', unsafe_allow_html=True)
+    
+    st.markdown('''
+        <div class="login-features">
+            <div class="feature-item">
+                <div class="feature-icon-box">🛰️</div>
+                <span>Sentinel</span>
+            </div>
+            <div class="feature-item">
+                <div class="feature-icon-box">⚡</div>
+                <span>Compute</span>
+            </div>
+            <div class="feature-item">
+                <div class="feature-icon-box">🌐</div>
+                <span>Global</span>
+            </div>
+        </div>
+    ''', unsafe_allow_html=True)
+    
+    if google_config:
+        try:
+            flow = create_google_flow(google_config)
+            auth_url, _ = flow.authorization_url(prompt='consent')
+            
+            # Use the original Streamlit button with custom styling
+            st.markdown(f"""
+                <a href="{auth_url}" target="_self" style="text-decoration: none;">
+                    <div class="google-btn">
+                        <span>Enter Khisba Intelligence</span>
+                        <span style="font-size: 1.2rem; opacity: 0.8;">→</span>
+                    </div>
+                </a>
+            """, unsafe_allow_html=True)
+        except Exception as e:
+            st.error(f"Error creating auth flow: {e}")
+    else:
+        st.warning("Google OAuth configuration not found")
+    
+    st.markdown('</div>', unsafe_allow_html=True)  # End login-card
+    st.markdown('</div>', unsafe_allow_html=True)  # End login-container
+    st.stop()
+
 # ==================== HELPER FUNCTIONS FOR EARTH ENGINE ====================
 
 def get_admin_boundaries(level, country_code=None, admin1_code=None):
@@ -663,104 +671,56 @@ def get_geometry_coordinates(geometry):
         st.error(f"Error getting coordinates: {str(e)}")
         return {'center': [0, 20], 'bounds': None, 'zoom': 2}
 
-# ==================== LOGIN PAGE ====================
-
-def show_login_page():
-    """Show the modern login page"""
-    import random
-    
-    # Background Particles
-    for i in range(10):
-        st.markdown(f'<div class="particle" style="width:{random.randint(2,5)}px; height:{random.randint(2,5)}px; top:{random.randint(0,100)}%; left:{random.randint(0,100)}%; animation-delay:{random.random()*5}s;"></div>', unsafe_allow_html=True)
-
-    st.markdown('<div class="login-container">', unsafe_allow_html=True)
-    st.markdown('<div class="login-card">', unsafe_allow_html=True)
-    st.markdown('<div class="login-title">Khisba</div>', unsafe_allow_html=True)
-    st.markdown('<div class="login-subtitle">Planetary Intelligence. 3D Insight.</div>', unsafe_allow_html=True)
-    
-    st.markdown('''
-        <div class="login-features">
-            <div class="feature-item">
-                <div class="feature-icon-box">🛰️</div>
-                <span>Sentinel</span>
-            </div>
-            <div class="feature-item">
-                <div class="feature-icon-box">⚡</div>
-                <span>Compute</span>
-            </div>
-            <div class="feature-item">
-                <div class="feature-icon-box">🌐</div>
-                <span>Global</span>
-            </div>
-        </div>
-    ''', unsafe_allow_html=True)
-    
-    if google_config:
-        try:
-            flow = create_google_flow(google_config)
-            auth_url, _ = flow.authorization_url(prompt='consent')
-            
-            st.markdown(f'''
-                <a href="{auth_url}" target="_self" style="text-decoration: none;">
-                    <div class="google-btn">
-                        <span>Enter Khisba Intelligence</span>
-                        <span style="font-size: 1.2rem; opacity: 0.8;">→</span>
-                    </div>
-                </a>
-            ''', unsafe_allow_html=True)
-        except Exception as e:
-            st.error(f"Error creating auth flow: {e}")
-    else:
-        st.warning("Satellite Uplink Offline: Configuration Missing")
-    
-    st.markdown('</div>', unsafe_allow_html=True)  # End login-card
-    st.markdown('</div>', unsafe_allow_html=True)  # End login-container
-
 # ==================== MAIN APPLICATION (After Authentication) ====================
-
-# Show login page if not authenticated
-if not st.session_state.google_credentials:
-    show_login_page()
-    st.stop()
 
 # Get user info for display
 user_info = st.session_state.google_user_info
 
 # Main Dashboard Layout
-st.markdown('<div class="center-container">', unsafe_allow_html=True)
-
-# Dashboard Header - Centered
-if st.session_state.google_user_info:
-    user = st.session_state.google_user_info
-    st.markdown(f"""
-    <div class="dashboard-title">
-        <div style="display: flex; justify-content: center; gap: 20px; margin-bottom: 20px; flex-wrap: wrap;">
-            <span class='user-badge'>
-                <img src="{user.get('picture', '')}" />
-                {user.get('name', 'User')}
-            </span>
-            <span class='status-badge'>Connected</span>
-            <span class='status-badge'>Earth Engine</span>
-            <span class='status-badge'>3D Mapbox</span>
+st.markdown(f"""
+<div class="compact-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+    <div>
+        <h1>🌍 KHISBA GIS</h1>
+        <p style="color: #999999; margin: 0; font-size: 14px;">Interactive 3D Global Vegetation Analytics</p>
+    </div>
+    <div style="display: flex; gap: 10px; align-items: center;">
+        <div class="user-badge">
+            <img src="{user_info.get('picture', '')}" alt="Profile">
+            <span>{user_info.get('name', 'User')}</span>
         </div>
-        <h1>KHISBA GIS - 3D Global Vegetation Analytics</h1>
-        <p style="color: #999999; margin-top: 10px;">Interactive 3D Globe with Earth Engine Integration</p>
+        <span class="status-badge">Connected</span>
+        <span class="status-badge">3D Mapbox Globe</span>
+        <span class="status-badge">v2.0</span>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+# Logout button in sidebar
+with st.sidebar:
+    st.markdown(f"""
+    <div class="card">
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
+            <img src="{user_info.get('picture', '')}" style="width: 40px; height: 40px; border-radius: 50%;">
+            <div>
+                <p style="margin: 0; font-weight: 600; color: #fff;">{user_info.get('name', 'User')}</p>
+                <p style="margin: 0; font-size: 12px; color: #999;">{user_info.get('email', '')}</p>
+            </div>
+        </div>
     </div>
     """, unsafe_allow_html=True)
-
-# Logout button centered
-col1, col2, col3 = st.columns([1, 2, 1])
-with col2:
-    if st.button("🚪 Sign Out", type="secondary", use_container_width=True):
+    
+    if st.button("🚪 Logout", type="secondary", use_container_width=True):
         st.session_state.google_credentials = None
         st.session_state.google_user_info = None
+        st.query_params.clear()
         st.rerun()
 
-# Main dashboard content in columns
-col_left, col_right = st.columns([0.3, 0.7], gap="large")
+# ==================== MAIN LAYOUT ====================
 
-with col_left:
-    # Area Selection Card
+col1, col2 = st.columns([0.25, 0.75], gap="large")
+
+# LEFT SIDEBAR - All controls
+with col1:
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown('<div class="card-title"><div class="icon">🌍</div><h3 style="margin: 0;">Area Selection</h3></div>', unsafe_allow_html=True)
     
@@ -901,7 +861,8 @@ with col_left:
         
         st.markdown('</div>', unsafe_allow_html=True)
 
-with col_right:
+# RIGHT CONTENT - Map and Results
+with col2:
     # Selected Area Info
     if st.session_state.selected_area_name:
         st.markdown(f"""
@@ -1112,11 +1073,9 @@ with col_right:
             st.dataframe(summary_df, use_container_width=True, hide_index=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-st.markdown('</div>', unsafe_allow_html=True)  # End center-container
-
 # Footer
 st.markdown("""
-<div style="text-align: center; color: #666666; font-size: 12px; padding: 20px 0; margin-top: 30px;">
+<div style="text-align: center; color: #666666; font-size: 12px; padding: 20px 0;">
     <p style="margin: 5px 0;">KHISBA GIS - Interactive 3D Global Vegetation Analytics Platform</p>
     <p style="margin: 5px 0;">Created by Taibi Farouk Djilali - Clean Green & Black Design</p>
     <div style="display: flex; justify-content: center; gap: 10px; margin-top: 10px;">
@@ -1125,5 +1084,5 @@ st.markdown("""
         <span class="status-badge">Streamlit</span>
         <span class="status-badge">Google Auth</span>
     </div>
-</div>
+</div> 
 """, unsafe_allow_html=True)
