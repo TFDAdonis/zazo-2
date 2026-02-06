@@ -374,55 +374,21 @@ st.markdown("""
         text-align: center;
     }
     
-    /* Features grid */
-    .login-features-grid {
-        display: flex;
-        justify-content: center;
-        gap: 30px;
-        margin-bottom: 40px;
-        flex-wrap: wrap;
-    }
-    
-    .login-feature-item {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 10px;
-        color: var(--text-light-gray);
-        font-size: 0.75rem;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-    }
-    
-    .login-feature-icon {
-        width: 45px;
-        height: 45px;
-        border: 1px solid rgba(0, 255, 136, 0.3);
-        border-radius: 12px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: rgba(0, 255, 136, 0.05);
-        color: var(--primary-green);
-        font-size: 18px;
-        transition: all 0.3s ease;
-    }
-    
-    /* Login button styling */
+    /* Red button styling */
     .login-page-button {
         display: flex;
         align-items: center;
         justify-content: center;
         gap: 12px;
-        background: linear-gradient(135deg, var(--primary-green), var(--accent-green));
-        color: #000 !important;
+        background: linear-gradient(135deg, #ff4444, #cc0000);
+        color: #ffffff !important;
         text-decoration: none;
         padding: 18px 30px;
         border-radius: 16px;
         font-weight: 700;
         font-size: 1rem;
         transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-        box-shadow: 0 10px 25px rgba(0, 255, 136, 0.25);
+        box-shadow: 0 10px 25px rgba(255, 68, 68, 0.25);
         width: 100%;
         margin-bottom: 20px;
         text-transform: uppercase;
@@ -434,8 +400,8 @@ st.markdown("""
     
     .login-page-button:hover {
         transform: translateY(-5px) scale(1.02);
-        box-shadow: 0 20px 40px rgba(0, 255, 136, 0.4);
-        background: linear-gradient(135deg, #00ffaa, #00ff88);
+        box-shadow: 0 20px 40px rgba(255, 68, 68, 0.4);
+        background: linear-gradient(135deg, #ff5555, #ff0000);
         text-decoration: none;
     }
     
@@ -596,21 +562,6 @@ if not st.session_state.google_credentials:
             <h1 class="login-page-title">KHISBA</h1>
             <p class="login-page-subtitle">Planetary Intelligence • 3D Global Analytics</p>
         </div>
-        
-        <div class="login-features-grid">
-            <div class="login-feature-item">
-                <div class="login-feature-icon">🛰️</div>
-                <span>Satellite Data</span>
-            </div>
-            <div class="login-feature-item">
-                <div class="login-feature-icon">🌿</div>
-                <span>Vegetation Analysis</span>
-            </div>
-            <div class="login-feature-item">
-                <div class="login-feature-icon">🌐</div>
-                <span>Global Coverage</span>
-            </div>
-        </div>
     </div>
     """, unsafe_allow_html=True)
     
@@ -623,7 +574,7 @@ if not st.session_state.google_credentials:
             # Display the auth URL and instructions
             st.markdown("""
             <div style="text-align: center; margin-top: 30px; max-width: 480px; margin-left: auto; margin-right: auto;">
-                <h3 style="color: #00ff88; margin-bottom: 20px;">🔓 Login with Google</h3>
+                <h3 style="color: #00ff88; margin-bottom: 20px;">🔓 Login Required</h3>
                 <div class="redirect-instruction">
                     <p><strong>⚠️ Important:</strong> Click the link below to open Google authentication in a new tab.</p>
                     <p style="margin-top: 10px; font-size: 13px;">After completing authentication in the new tab, return to this page.</p>
@@ -631,28 +582,16 @@ if not st.session_state.google_credentials:
             </div>
             """, unsafe_allow_html=True)
             
-            # Display clickable link that opens in new tab
+            # Display clickable link that opens in new tab - RED COLOR WITH "Log with Google" TEXT
             st.markdown(f"""
             <div style="text-align: center; margin-top: 20px;">
                 <a href="{auth_url}" target="_blank" style="text-decoration: none; display: inline-block; width: 100%; max-width: 480px;">
                     <div class="login-page-button">
-                        <span>Open Google Login in New Tab</span>
+                        <span>Log with Google</span>
                     </div>
                 </a>
             </div>
             """, unsafe_allow_html=True)
-            
-            # Manual refresh button
-            st.markdown("""
-            <div style="text-align: center; margin-top: 20px; max-width: 480px; margin-left: auto; margin-right: auto;">
-                <p style="color: #999999; font-size: 13px; margin-bottom: 10px;">After completing Google authentication, click below:</p>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            col1, col2, col3 = st.columns([1, 2, 1])
-            with col2:
-                if st.button("🔄 I've Completed Google Login - Refresh Page", type="primary", use_container_width=True):
-                    st.rerun()
             
         except Exception as e:
             st.error(f"Error creating auth flow: {e}")
