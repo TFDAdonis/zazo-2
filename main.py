@@ -28,43 +28,18 @@ st.set_page_config(
 # Load Google OAuth secrets
 def load_google_config():
     try:
-        # First try to get from Streamlit secrets
         if "web" in st.secrets:
             client_config = dict(st.secrets["web"])
-            
-            # Override redirect URIs to match current environment
-            if "redirect_uris" in client_config:
-                # Use the current app URL as redirect URI
-                current_url = st.secrets.get("CURRENT_URL", "https://zazoo-2-cpwtcholx7mk8ddfhx7dgp.streamlit.app")
-                client_config["redirect_uris"] = [f"{current_url}"]
-                
-            return client_config
-        
-        # Fallback to client_secret.json
         elif os.path.exists("client_secret.json"):
             with open("client_secret.json", "r") as f:
                 client_config = json.load(f)["web"]
-                
-                # Override redirect URIs for current environment
-                current_url = "https://zazoo-2-cpwtcholx7mk8ddfhx7dgp.streamlit.app"
-                client_config["redirect_uris"] = [current_url]
-                
-            return client_config
-            
-        # Manual configuration for deployed app
         else:
-            return {
-                "client_id": st.secrets.get("GOOGLE_CLIENT_ID", ""),
-                "project_id": st.secrets.get("GOOGLE_PROJECT_ID", ""),
-                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                "token_uri": "https://oauth2.googleapis.com/token",
-                "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-                "client_secret": st.secrets.get("GOOGLE_CLIENT_SECRET", ""),
-                "redirect_uris": ["https://zazoo-2-cpwtcholx7mk8ddfhx7dgp.streamlit.app"],
-                "javascript_origins": ["https://zazoo-2-cpwtcholx7mk8ddfhx7dgp.streamlit.app"]
-            }
-            
+            return None
+        return client_config
     except Exception:
+        if os.path.exists("client_secret.json"):
+            with open("client_secret.json", "r") as f:
+                return json.load(f)["web"]
         return None
 
 GOOGLE_SCOPES = [
@@ -74,30 +49,15 @@ GOOGLE_SCOPES = [
 ]
 
 def create_google_flow(client_config):
-    if not client_config:
-        return None
-        
-    # Ensure redirect_uris is a list
     if "redirect_uris" in client_config and isinstance(client_config["redirect_uris"], str):
         client_config["redirect_uris"] = [client_config["redirect_uris"]]
     
-    # Use the correct redirect URI for the current environment
-    if "redirect_uris" in client_config and client_config["redirect_uris"]:
-        redirect_uri = client_config["redirect_uris"][0]
-    else:
-        # Default to your Streamlit app URL
-        redirect_uri = "https://zazoo-2-cpwtcholx7mk8ddfhx7dgp.streamlit.app"
-    
-    try:
-        flow = google_auth_oauthlib.flow.Flow.from_client_config(
-            {"web": client_config},
-            scopes=GOOGLE_SCOPES,
-            redirect_uri=redirect_uri
-        )
-        return flow
-    except Exception as e:
-        st.error(f"Error creating Google flow: {str(e)}")
-        return None
+    flow = google_auth_oauthlib.flow.Flow.from_client_config(
+        {"web": client_config},
+        scopes=GOOGLE_SCOPES,
+        redirect_uri=client_config["redirect_uris"][0]
+    )
+    return flow
 
 # Initialize session state for Google auth
 if "google_credentials" not in st.session_state:
@@ -310,191 +270,6 @@ st.markdown("""
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
-    
-    /* Modern Login Page Styling */
-    .login-page-container {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        min-height: 100vh;
-        background: #000000;
-        position: relative;
-        overflow: hidden;
-    }
-    
-    /* Animated background */
-    .login-page-container::before {
-        content: "";
-        position: absolute;
-        width: 200%;
-        height: 200%;
-        top: -50%;
-        left: -50%;
-        background-image: 
-            linear-gradient(rgba(0, 255, 136, 0.05) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(0, 255, 136, 0.05) 1px, transparent 1px);
-        background-size: 50px 50px;
-        transform: perspective(500px) rotateX(60deg) translateY(0);
-        animation: gridMove 20s linear infinite;
-        pointer-events: none;
-    }
-    
-    @keyframes gridMove {
-        0% { transform: perspective(500px) rotateX(60deg) translateY(0); }
-        100% { transform: perspective(500px) rotateX(60deg) translateY(50px); }
-    }
-    
-    /* Floating particles */
-    .particle {
-        position: absolute;
-        background: var(--primary-green);
-        border-radius: 50%;
-        pointer-events: none;
-        opacity: 0.3;
-        filter: blur(1px);
-        animation: floatParticle 10s infinite ease-in-out;
-    }
-    
-    @keyframes floatParticle {
-        0%, 100% { transform: translateY(0) translateX(0); }
-        25% { transform: translateY(-100px) translateX(50px); }
-        50% { transform: translateY(-200px) translateX(-20px); }
-        75% { transform: translateY(-100px) translateX(-50px); }
-    }
-    
-    /* Login card styling */
-    .login-page-card {
-        background: rgba(5, 5, 5, 0.85);
-        backdrop-filter: blur(20px);
-        border: 1px solid rgba(0, 255, 136, 0.2);
-        border-radius: 24px;
-        padding: 50px 40px;
-        max-width: 480px;
-        width: 90%;
-        box-shadow: 0 0 50px rgba(0, 255, 136, 0.15);
-        animation: cardEntrance 1s cubic-bezier(0.2, 0.8, 0.2, 1);
-        z-index: 2;
-        position: relative;
-        margin: 0 auto;
-    }
-    
-    @keyframes cardEntrance {
-        from { opacity: 0; transform: scale(0.9) translateY(30px); filter: blur(10px); }
-        to { opacity: 1; transform: scale(1) translateY(0); filter: blur(0); }
-    }
-    
-    /* Login title */
-    .login-page-title {
-        font-size: 3.5rem !important;
-        font-weight: 900;
-        margin-bottom: 0.5rem;
-        background: linear-gradient(to right, #ffffff, var(--primary-green), #00ccff);
-        background-size: 200% auto;
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        animation: shine 4s linear infinite;
-        letter-spacing: -2px;
-        text-transform: uppercase;
-        text-align: center;
-    }
-    
-    @keyframes shine {
-        to { background-position: 200% center; }
-    }
-    
-    .login-page-subtitle {
-        color: var(--text-gray);
-        margin-bottom: 40px;
-        font-size: 1rem;
-        line-height: 1.6;
-        text-transform: uppercase;
-        letter-spacing: 2px;
-        font-weight: 300;
-        text-align: center;
-    }
-    
-    /* Features grid */
-    .login-features-grid {
-        display: flex;
-        justify-content: center;
-        gap: 30px;
-        margin-bottom: 40px;
-        flex-wrap: wrap;
-    }
-    
-    .login-feature-item {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 10px;
-        color: var(--text-light-gray);
-        font-size: 0.75rem;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-    }
-    
-    .login-feature-icon {
-        width: 45px;
-        height: 45px;
-        border: 1px solid rgba(0, 255, 136, 0.3);
-        border-radius: 12px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: rgba(0, 255, 136, 0.05);
-        color: var(--primary-green);
-        font-size: 18px;
-        transition: all 0.3s ease;
-    }
-    
-    /* Login button styling */
-    .login-page-button {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 12px;
-        background: linear-gradient(135deg, var(--primary-green), var(--accent-green));
-        color: #000 !important;
-        text-decoration: none;
-        padding: 18px 30px;
-        border-radius: 16px;
-        font-weight: 700;
-        font-size: 1rem;
-        transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-        box-shadow: 0 10px 25px rgba(0, 255, 136, 0.25);
-        width: 100%;
-        margin-bottom: 20px;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        border: none;
-        cursor: pointer;
-        font-family: inherit;
-    }
-    
-    .login-page-button:hover {
-        transform: translateY(-5px) scale(1.02);
-        box-shadow: 0 20px 40px rgba(0, 255, 136, 0.4);
-        background: linear-gradient(135deg, #00ffaa, #00ff88);
-        text-decoration: none;
-    }
-    
-    .login-page-button:active {
-        transform: translateY(-2px);
-    }
-    
-    .section-divider {
-        height: 1px;
-        background: linear-gradient(90deg, transparent, var(--border-gray), transparent);
-        margin: 30px 0;
-    }
-    
-    .compact-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 20px;
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -581,24 +356,12 @@ if 'selected_area_name' not in st.session_state:
 
 google_config = load_google_config()
 
-# Handle OAuth callback - Updated for Streamlit Cloud
+# Handle OAuth callback
 code = st.query_params.get("code")
-state = st.query_params.get("state")
-
 if code and not st.session_state.google_credentials and google_config:
     with st.spinner("Authenticating with Google..."):
         try:
-            # Get the current URL for redirect_uri
-            current_url = "https://zazoo-2-cpwtcholx7mk8ddfhx7dgp.streamlit.app"
-            
-            # Create flow with the correct redirect URI
-            flow = google_auth_oauthlib.flow.Flow.from_client_config(
-                {"web": google_config},
-                scopes=GOOGLE_SCOPES,
-                redirect_uri=current_url
-            )
-            
-            # Fetch token using the authorization code
+            flow = create_google_flow(google_config)
             flow.fetch_token(code=code)
             credentials = flow.credentials
             st.session_state.google_credentials = credentials
@@ -608,97 +371,41 @@ if code and not st.session_state.google_credentials and google_config:
             user_info = service.userinfo().get().execute()
             st.session_state.google_user_info = user_info
             
-            # Clear query params and rerun
             st.query_params.clear()
             st.rerun()
-            
         except Exception as e:
-            st.error(f"Authentication failed: {str(e)}")
+            st.error(f"Authentication failed: {e}")
             st.query_params.clear()
 
-# ==================== MODERN LOGIN PAGE ====================
+# Show login page if not authenticated
+# Replace the login section with this cleaner version:
 
 # Show login page if not authenticated
 if not st.session_state.google_credentials:
-    # Add modern background elements
-    import random
-    for i in range(12):
-        st.markdown(f'<div class="particle" style="width:{random.randint(2,6)}px; height:{random.randint(2,6)}px; top:{random.randint(0,100)}%; left:{random.randint(0,100)}%; animation-delay:{random.random()*8}s;"></div>', unsafe_allow_html=True)
-    
-    st.markdown('<div class="login-page-container">', unsafe_allow_html=True)
-    
-    # Modern login card
     st.markdown("""
-    <div class="login-page-card">
-        <div style="text-align: center; margin-bottom: 40px;">
-            <h1 class="login-page-title">KHISBA</h1>
-            <p class="login-page-subtitle">Planetary Intelligence • 3D Global Analytics</p>
-        </div>
-        
-        <div class="login-features-grid">
-            <div class="login-feature-item">
-                <div class="login-feature-icon">🛰️</div>
-                <span>Satellite Data</span>
-            </div>
-            <div class="login-feature-item">
-                <div class="login-feature-icon">🌿</div>
-                <span>Vegetation Analysis</span>
-            </div>
-            <div class="login-feature-item">
-                <div class="login-feature-icon">🌐</div>
-                <span>Global Coverage</span>
+    <div class="main-container">
+        <div class="content-container" style="max-width: 500px; margin: 100px auto;">
+            <div class="card">
+                <h1 style="text-align: center; margin-bottom: 10px;">🌍 KHISBA GIS</h1>
+                <p style="text-align: center; color: #999999; margin-bottom: 30px;">3D Global Vegetation Analytics</p>
             </div>
         </div>
     </div>
     """, unsafe_allow_html=True)
     
-    # Create login button with proper redirect URI
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         if google_config:
             try:
-                # Use the correct redirect URI for Streamlit Cloud
-                redirect_uri = "https://zazoo-2-cpwtcholx7mk8ddfhx7dgp.streamlit.app"
-                
-                flow = google_auth_oauthlib.flow.Flow.from_client_config(
-                    {"web": google_config},
-                    scopes=GOOGLE_SCOPES,
-                    redirect_uri=redirect_uri
-                )
-                
-                # Generate authorization URL
-                auth_url, _ = flow.authorization_url(
-                    access_type='offline',
-                    prompt='consent'
-                )
-                
-                # Create login button
-                st.markdown(f"""
-                <div style="text-align: center; margin-top: 30px;">
-                    <a href="{auth_url}" target="_self" style="text-decoration: none; display: inline-block; width: 100%;">
-                        <div class="login-page-button">
-                            <span>🔓 Login with Google</span>
-                        </div>
-                    </a>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                # Also show a debug info if needed
-                if st.secrets.get("DEBUG", False):
-                    st.info(f"Redirect URI: {redirect_uri}")
-                    st.info(f"Client ID: {google_config.get('client_id', 'Not found')[:20]}...")
-                    
+                flow = create_google_flow(google_config)
+                auth_url, _ = flow.authorization_url(prompt='consent')
+                st.link_button("🔓 Login with Google", auth_url, type="primary", use_container_width=True)
             except Exception as e:
-                st.error(f"Error creating auth flow: {str(e)}")
-                # Show debug info
-                if st.secrets.get("DEBUG", False):
-                    st.error(f"Config keys: {list(google_config.keys()) if google_config else 'No config'}")
+                st.error(f"Error creating auth flow: {e}")
         else:
-            st.error("Google OAuth configuration not found. Please check your secrets configuration.")
+            st.error("Google OAuth configuration not found")
     
-    st.markdown('</div>', unsafe_allow_html=True)  # End login-page-container
     st.stop()
-
 # ==================== MAIN APPLICATION (After Authentication) ====================
 
 # Get user info for display
@@ -1182,4 +889,4 @@ st.markdown("""
         <span class="status-badge">Google Auth</span>
     </div>
 </div> 
-""", unsafe_allow_html=True)
+""", unsafe_allow_html=True)     
